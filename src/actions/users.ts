@@ -103,7 +103,7 @@ export async function approveRegistration(registrationId: string, assignedRole?:
   await admin.from(T.notifications).insert({
     user_id: req.supabase_user_id,
     type: 'success',
-    category: 'registration',
+    category: 'system',
     title: 'Account Approved',
     body: 'Your CAMS account has been approved. You can now sign in.',
     action_url: '/login',
@@ -165,7 +165,7 @@ export async function rejectRegistration(registrationId: string, reason: string)
     await admin.from(T.notifications).insert({
       user_id: req.supabase_user_id,
       type: 'danger',
-      category: 'registration',
+      category: 'system',
       title: 'Account Request Not Approved',
       body: parsed.data.reason,
     })

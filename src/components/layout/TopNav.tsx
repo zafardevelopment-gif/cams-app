@@ -10,13 +10,13 @@ interface TopNavProps {
   user: User
   breadcrumb?: { label: string; href?: string }[]
   onMenuClick?: () => void
+  unreadCount?: number
 }
 
-export function TopNav({ user, breadcrumb, onMenuClick }: TopNavProps) {
+export function TopNav({ user, breadcrumb, onMenuClick, unreadCount = 0 }: TopNavProps) {
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
@@ -29,7 +29,6 @@ export function TopNav({ user, breadcrumb, onMenuClick }: TopNavProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [dropdownOpen])
 
-  // Close dropdown on Escape
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if (e.key === 'Escape') setDropdownOpen(false)
@@ -40,7 +39,6 @@ export function TopNav({ user, breadcrumb, onMenuClick }: TopNavProps) {
 
   return (
     <header className="topnav">
-      {/* Mobile menu button — visible on mobile via CSS */}
       <button
         className="topnav-btn mobile-menu-btn"
         onClick={onMenuClick}
@@ -66,7 +64,7 @@ export function TopNav({ user, breadcrumb, onMenuClick }: TopNavProps) {
         ))}
       </div>
 
-      {/* Search — hidden on mobile via CSS */}
+      {/* Search */}
       <div className="topnav-search">
         <span>🔍</span>
         <input placeholder="Search staff, assessments..." />
@@ -74,9 +72,34 @@ export function TopNav({ user, breadcrumb, onMenuClick }: TopNavProps) {
 
       {/* Actions */}
       <div className="topnav-actions">
-        <Link href="/notifications" className="topnav-btn" style={{ textDecoration: 'none' }}>
+        {/* Bell with unread badge */}
+        <Link
+          href="/notifications"
+          className="topnav-btn"
+          style={{ textDecoration: 'none', position: 'relative' }}
+          aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
+        >
           🔔
-          <div className="notif-dot" />
+          {unreadCount > 0 && (
+            <span style={{
+              position: 'absolute',
+              top: -4, right: -4,
+              minWidth: 18, height: 18,
+              background: '#EF5350',
+              color: 'white',
+              fontSize: 10,
+              fontWeight: 700,
+              borderRadius: 9,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '0 4px',
+              lineHeight: 1,
+              border: '2px solid white',
+            }}>
+              {unreadCount > 99 ? '99+' : unreadCount}
+            </span>
+          )}
         </Link>
 
         {/* User dropdown */}
@@ -97,6 +120,29 @@ export function TopNav({ user, breadcrumb, onMenuClick }: TopNavProps) {
 
           {dropdownOpen && (
             <div className="dropdown-menu" style={{ display: 'flex' }}>
+              <Link
+                href="/notifications"
+                className="dropdown-item"
+                onClick={() => setDropdownOpen(false)}
+              >
+                🔔 Notifications
+                {unreadCount > 0 && (
+                  <span style={{
+                    marginLeft: 'auto', background: '#EF5350', color: 'white',
+                    fontSize: 10, fontWeight: 700, borderRadius: 8,
+                    padding: '1px 6px',
+                  }}>
+                    {unreadCount}
+                  </span>
+                )}
+              </Link>
+              <Link
+                href="/settings/notifications"
+                className="dropdown-item"
+                onClick={() => setDropdownOpen(false)}
+              >
+                🔕 Notification Preferences
+              </Link>
               <Link
                 href="/settings"
                 className="dropdown-item"

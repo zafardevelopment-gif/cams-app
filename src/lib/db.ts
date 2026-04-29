@@ -20,6 +20,11 @@ export const T = {
   profile_history:        'CAMS_profile_history',
   template_history:       'CAMS_template_history',
   assessment_evidence:    'CAMS_assessment_evidence',
+  plans:                  'CAMS_plans',
+  coupons:                'CAMS_coupons',
+  subscriptions:          'CAMS_subscriptions',
+  invoices:               'CAMS_invoices',
+  hospital_signups:       'CAMS_hospital_signups',
 } as const
 
 // Alias — same values, used in .select() join strings for clarity

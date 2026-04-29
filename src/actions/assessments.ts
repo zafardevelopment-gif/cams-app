@@ -81,7 +81,7 @@ export async function createAssessment(formData: FormData): Promise<ActionResult
 
   await ctx.admin.from(T.notifications).insert({
     user_id: targetStaffId,
-    type: 'info', category: 'assessment',
+    type: 'info', category: 'assessments',
     title: 'New Assessment Assigned',
     body: 'A new competency assessment has been assigned to you.',
     action_url: `/assessments/${data.id}`,
@@ -91,7 +91,7 @@ export async function createAssessment(formData: FormData): Promise<ActionResult
   if (assessor_id) {
     await ctx.admin.from(T.notifications).insert({
       user_id: assessor_id,
-      type: 'info', category: 'assessment',
+      type: 'info', category: 'assessments',
       title: 'Assessment Evaluation Requested',
       body: 'You have been assigned to evaluate a competency assessment.',
       action_url: `/assessments/${data.id}`,
@@ -185,7 +185,7 @@ export async function submitAssessmentV2(
 
   await ctx.admin.from(T.notifications).insert({
     user_id: assessment.staff_id,
-    type: 'info', category: 'assessment',
+    type: 'info', category: 'assessments',
     title: 'Assessment Submitted',
     body: `Your assessment for "${template?.title ?? 'competency'}" has been submitted for review.`,
     action_url: `/assessments/${assessmentId}`,
@@ -360,7 +360,7 @@ export async function submitAssessment(
 
   await admin.from(T.notifications).insert({
     user_id: assessment.staff_id,
-    type: 'info', category: 'assessment',
+    type: 'info', category: 'assessments',
     title: 'Assessment Submitted',
     body: `Your assessment for "${template?.title ?? 'competency'}" has been submitted for review.`,
     action_url: `/assessments/${assessmentId}`,
@@ -427,7 +427,7 @@ export async function processApproval(
   if (action === 'rejected') {
     await admin.from(T.assessments).update({ status: 'failed' }).eq('id', approval.assessment_id)
     await admin.from(T.notifications).insert({
-      user_id: assessment.staff_id, type: 'danger', category: 'assessment',
+      user_id: assessment.staff_id, type: 'danger', category: 'assessments',
       title: 'Assessment Not Approved',
       body: comments || `Your assessment for "${template?.title ?? 'competency'}" was not approved.`,
       action_url: `/assessments/${approval.assessment_id}`,
@@ -470,7 +470,7 @@ export async function processApproval(
       })
 
       await admin.from(T.notifications).insert({
-        user_id: assessment.staff_id, type: 'success', category: 'certificate',
+        user_id: assessment.staff_id, type: 'success', category: 'certificates',
         title: 'Certificate Issued!',
         body: `Your competency certificate for "${template?.title ?? 'competency'}" has been issued. #${certNumber}`,
         action_url: '/certificates', reference_type: 'certificate',
@@ -483,7 +483,7 @@ export async function processApproval(
       })
     } else {
       await admin.from(T.notifications).insert({
-        user_id: assessment.staff_id, type: 'danger', category: 'assessment',
+        user_id: assessment.staff_id, type: 'danger', category: 'assessments',
         title: 'Assessment Result: Not Passed',
         body: `Your assessment for "${template?.title ?? 'competency'}" did not meet the passing score.`,
         action_url: `/assessments/${approval.assessment_id}`,

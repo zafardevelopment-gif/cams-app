@@ -1,7 +1,9 @@
 import Link from 'next/link'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
-import { T, J } from '@/lib/db'
+import { T } from '@/lib/db'
+import { getHrQualityDashboardData } from '@/actions/reports'
+import HrQualityCharts from './HrQualityCharts'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'HR / Quality Dashboard — CAMS' }
@@ -17,18 +19,7 @@ export default async function HrQualityPage() {
     .eq('id', authUser!.id)
     .single()
 
-  const hospitalId = profile?.hospital_id ?? ''
-
-  const [{ data: staff }, { data: certs }, { data: pendingApprovals }] = await Promise.all([
-    admin.from(T.users).select('id').eq('hospital_id', hospitalId).eq('status', 'active'),
-    admin.from(T.certificates).select('id, status').eq('hospital_id', hospitalId),
-    admin.from(T.approvals)
-      .select(`id, assessment:${J.assessments}!assessment_id(hospital_id)`)
-      .eq('status', 'pending'),
-  ])
-
-  const activeCerts = (certs ?? []).filter((c) => c.status === 'active').length
-  const expiringCerts = (certs ?? []).filter((c) => c.status === 'expiring_soon').length
+  const dashData = await getHrQualityDashboardData(profile?.hospital_id ?? '')
 
   return (
     <>
@@ -37,14 +28,17 @@ export default async function HrQualityPage() {
           <h1>HR / Quality Dashboard</h1>
           <p>Compliance and quality overview</p>
         </div>
+        <div className="page-header-actions">
+          <Link href="/reports" className="btn btn-secondary btn-sm">📥 Reports</Link>
+        </div>
       </div>
 
       <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
         {[
-          { icon: '👥', label: 'Active Staff', value: (staff ?? []).length, bg: '#E3F2FD' },
-          { icon: '🏅', label: 'Active Certificates', value: activeCerts, bg: '#E8F5E9' },
-          { icon: '⚠️', label: 'Expiring Certs', value: expiringCerts, bg: '#FFEBEE', alert: expiringCerts > 0 },
-          { icon: '✍️', label: 'Pending Approvals', value: (pendingApprovals ?? []).length, bg: '#FFF3E0' },
+          { icon: '👥', label: 'Active Staff', value: dashData.activeStaff, bg: '#E3F2FD' },
+          { icon: '📊', label: 'Compliance Rate', value: `${dashData.complianceRate}%`, bg: dashData.complianceRate >= 70 ? '#E8F5E9' : '#FFEBEE' },
+          { icon: '🏅', label: 'Active Certs', value: dashData.activeCerts, bg: '#E8F5E9' },
+          { icon: '⚠️', label: 'Expiring Certs', value: dashData.expiringCerts, bg: '#FFF8E1', alert: dashData.expiringCerts > 0 },
         ].map((k) => (
           <div key={k.label} className="kpi-card">
             <div className="kpi-icon" style={{ background: k.bg }}>{k.icon}</div>
@@ -54,6 +48,26 @@ export default async function HrQualityPage() {
           </div>
         ))}
       </div>
+
+      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(2, 1fr)', marginTop: 12 }}>
+        {[
+          { icon: '🔁', label: 'Overdue Renewals', value: dashData.overdueRenewals, bg: '#FFEBEE', alert: dashData.overdueRenewals > 0 },
+          { icon: '🔄', label: 'Pending Transfers', value: dashData.pendingTransfers, bg: '#F3E5F5' },
+        ].map((k) => (
+          <div key={k.label} className="kpi-card">
+            <div className="kpi-icon" style={{ background: k.bg }}>{k.icon}</div>
+            <div className="kpi-label">{k.label}</div>
+            <div className="kpi-value">{k.value}</div>
+            {k.alert && <div className="kpi-change down">Overdue</div>}
+          </div>
+        ))}
+      </div>
+
+      <HrQualityCharts
+        deptCompliance={dashData.deptCompliance}
+        trend={dashData.trend}
+        complianceRate={dashData.complianceRate}
+      />
 
       <div className="grid-4" style={{ marginTop: 24 }}>
         {[

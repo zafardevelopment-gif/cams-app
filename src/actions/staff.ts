@@ -390,6 +390,36 @@ export async function requestTransfer(formData: FormData): Promise<ActionResult<
 
   if (error) return { success: false, error: error.message }
 
+  // Notify the staff member
+  await ctx.admin.from(T.notifications).insert({
+    user_id: parsed.data.staff_id,
+    type: 'info', category: 'transfers',
+    title: 'Transfer Request Submitted',
+    body: 'A transfer request has been submitted on your behalf. You will be notified when it is processed.',
+    action_url: '/transfers',
+    reference_id: data.id, reference_type: 'transfer',
+  })
+
+  // Notify hospital admins
+  const { data: admins } = await ctx.admin
+    .from(T.users)
+    .select('id')
+    .eq('hospital_id', staffUser.hospital_id ?? '')
+    .in('role', ['hospital_admin', 'branch_admin', 'head_nurse', 'department_head'])
+    .eq('status', 'active')
+  if (admins && admins.length > 0) {
+    await ctx.admin.from(T.notifications).insert(
+      admins.map((a) => ({
+        user_id: a.id,
+        type: 'warning', category: 'transfers',
+        title: 'New Transfer Request',
+        body: 'A new staff transfer request requires your review.',
+        action_url: '/transfers',
+        reference_id: data.id, reference_type: 'transfer',
+      }))
+    )
+  }
+
   await ctx.admin.from(T.activity_logs).insert({
     user_id: ctx.authUser.id,
     action: 'request_transfer',
@@ -453,6 +483,19 @@ export async function processTransfer(
   } else {
     return { success: false, error: 'You are not authorized to process this transfer at this stage' }
   }
+
+  // Notify the staff member of the outcome
+  await ctx.admin.from(T.notifications).insert({
+    user_id: transfer.staff_id,
+    type: action === 'approved' ? 'success' : 'danger',
+    category: 'transfers',
+    title: action === 'approved' ? 'Transfer Approved' : 'Transfer Rejected',
+    body: action === 'approved'
+      ? 'Your transfer request has been approved. Your profile has been updated.'
+      : `Your transfer request was not approved.${notes ? ` Reason: ${notes}` : ''}`,
+    action_url: '/transfers',
+    reference_id: transferId, reference_type: 'transfer',
+  })
 
   await ctx.admin.from(T.activity_logs).insert({
     user_id: ctx.authUser.id,

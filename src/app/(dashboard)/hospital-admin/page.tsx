@@ -2,6 +2,8 @@ import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { T, J } from '@/lib/db'
+import { getHospitalAdminDashboardData } from '@/actions/reports'
+import HospitalAdminCharts from './HospitalAdminCharts'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Hospital Admin Dashboard — CAMS' }
@@ -21,26 +23,22 @@ export default async function HospitalAdminPage() {
 
   const admin = createAdminClient()
   const { data: profile } = await admin.from(T.users).select('hospital_id').eq('id', authUser!.id).single()
-  const hospitalId = profile?.hospital_id
+  const hospitalId = profile?.hospital_id ?? ''
 
-  const [{ data: recentAssessments }, { data: pendingRegs }, { data: activeStaff }, { data: certs }] = await Promise.all([
+  const [{ data: recentAssessments }, { data: pendingRegs }, dashData] = await Promise.all([
     admin.from(T.assessments)
       .select(`id, status, created_at, staff:${J.users}!staff_id(full_name, job_title), template:${J.competency_templates}!template_id(title)`)
-      .eq('hospital_id', hospitalId ?? '')
+      .eq('hospital_id', hospitalId)
       .order('created_at', { ascending: false })
       .limit(5),
     admin.from(T.registration_requests)
       .select('id, full_name, email, job_title, created_at')
-      .eq('hospital_id', hospitalId ?? '')
+      .eq('hospital_id', hospitalId)
       .eq('status', 'pending')
       .order('created_at', { ascending: false })
       .limit(5),
-    admin.from(T.users).select('id').eq('hospital_id', hospitalId ?? '').eq('status', 'active'),
-    admin.from(T.certificates).select('id, status').eq('hospital_id', hospitalId ?? ''),
+    getHospitalAdminDashboardData(hospitalId),
   ])
-
-  const activeCertsCount = (certs ?? []).filter((c) => c.status === 'active').length
-  const expiringCertsCount = (certs ?? []).filter((c) => c.status === 'expiring_soon').length
 
   return (
     <>
@@ -50,27 +48,52 @@ export default async function HospitalAdminPage() {
           <p>Overview of staff competencies and compliance</p>
         </div>
         <div className="page-header-actions">
-          <Link href="/reports" className="btn btn-secondary btn-sm">📥 Export</Link>
+          <Link href="/reports" className="btn btn-secondary btn-sm">📥 Reports</Link>
           <Link href="/competencies" className="btn btn-primary btn-sm">＋ New Competency</Link>
         </div>
       </div>
 
       <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
         {[
-          { icon: '👥', label: 'Active Staff', value: (activeStaff ?? []).length, bg: '#E3F2FD' },
-          { icon: '📋', label: 'Pending Registrations', value: (pendingRegs ?? []).length, bg: '#F3E5F5' },
-          { icon: '🏅', label: 'Active Certificates', value: activeCertsCount, bg: '#E8F5E9' },
-          { icon: '⚠️', label: 'Expiring Certs', value: expiringCertsCount, bg: '#FFEBEE', alert: expiringCertsCount > 0 },
-          { icon: '📊', label: 'Total Assessments', value: (recentAssessments ?? []).length, bg: '#E3F2FD' },
+          { icon: '👥', label: 'Total Staff', value: dashData.totalStaff, bg: '#E3F2FD' },
+          { icon: '📋', label: 'Pending Approvals', value: dashData.pendingApprovals, bg: '#F3E5F5', alert: dashData.pendingApprovals > 0 },
+          { icon: '✅', label: 'Active Assessments', value: dashData.activeAssessments, bg: '#E8F5E9' },
+          { icon: '📊', label: 'Pass Rate', value: `${dashData.passRate}%`, bg: '#E0F2F1', sub: `${dashData.passed}/${dashData.totalAssessments}` },
+          { icon: '⚠️', label: 'Expiring Licenses', value: dashData.expiringLicenses, bg: '#FFEBEE', alert: dashData.expiringLicenses > 0 },
         ].map((k) => (
           <div key={k.label} className="kpi-card">
             <div className="kpi-icon" style={{ background: k.bg }}>{k.icon}</div>
             <div className="kpi-label">{k.label}</div>
             <div className="kpi-value">{k.value}</div>
-            {k.alert && <div className="kpi-change down">Needs attention</div>}
+            {k.sub && <div className="kpi-change up">{k.sub} assessments</div>}
+            {k.alert && !k.sub && <div className="kpi-change down">Needs attention</div>}
           </div>
         ))}
       </div>
+
+      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)', marginTop: 12 }}>
+        {[
+          { icon: '🏅', label: 'Active Certs', value: dashData.activeCerts, bg: '#E8F5E9' },
+          { icon: '🔔', label: 'Expiring Certs', value: dashData.expiringCerts, bg: '#FFF8E1', alert: dashData.expiringCerts > 0 },
+          { icon: '🔄', label: 'Pending Transfers', value: dashData.pendingTransfers, bg: '#F3E5F5' },
+        ].map((k) => (
+          <div key={k.label} className="kpi-card">
+            <div className="kpi-icon" style={{ background: k.bg }}>{k.icon}</div>
+            <div className="kpi-label">{k.label}</div>
+            <div className="kpi-value">{k.value}</div>
+            {k.alert && <div className="kpi-change down">Need renewal</div>}
+          </div>
+        ))}
+      </div>
+
+      {/* Charts */}
+      <HospitalAdminCharts
+        passFailTrend={dashData.passFailTrend}
+        deptCompliance={dashData.deptCompliance}
+        passed={dashData.passed}
+        failed={dashData.failed}
+        pending={dashData.activeAssessments}
+      />
 
       <div className="grid-2" style={{ marginBottom: 20 }}>
         <div className="card">

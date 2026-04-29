@@ -1,7 +1,9 @@
 import Link from 'next/link'
 import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
-import { T, J } from '@/lib/db'
+import { T } from '@/lib/db'
+import { getStaffDashboardData } from '@/actions/reports'
+import StaffDashboardCharts from './StaffDashboardCharts'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'My Dashboard — CAMS' }
@@ -10,11 +12,13 @@ const STATUS_BADGE: Record<string, string> = {
   passed: 'badge-green', in_progress: 'badge-yellow', not_started: 'badge-gray',
   active: 'badge-green', expiring_soon: 'badge-yellow', expired: 'badge-red',
   assessor_review: 'badge-blue', submitted: 'badge-purple', head_nurse_review: 'badge-teal',
+  failed: 'badge-red',
 }
 const STATUS_LABEL: Record<string, string> = {
   passed: 'Passed', in_progress: 'In Progress', not_started: 'Not Started',
   active: 'Active', expiring_soon: 'Expiring Soon', expired: 'Expired',
   assessor_review: 'Assessor Review', submitted: 'Submitted', head_nurse_review: 'HN Review',
+  failed: 'Failed',
 }
 
 export default async function StaffDashboardPage() {
@@ -24,24 +28,16 @@ export default async function StaffDashboardPage() {
   const admin = createAdminClient()
   const { data: profile } = await admin.from(T.users).select('full_name, job_title').eq('id', authUser!.id).single()
 
-  const [{ data: myAssessments }, { data: myCerts }] = await Promise.all([
-    admin.from(T.assessments)
-      .select(`id, status, overall_score, template:${J.competency_templates}!template_id(title, category)`)
-      .eq('staff_id', authUser!.id)
-      .order('created_at', { ascending: false }),
-    admin.from(T.certificates)
-      .select(`id, status, expiry_date, template:${J.competency_templates}!template_id(title)`)
-      .eq('staff_id', authUser!.id)
-      .order('expiry_date'),
-  ])
+  const dashData = await getStaffDashboardData(authUser!.id)
 
-  const assessments = myAssessments ?? []
-  const certs = myCerts ?? []
-
-  const passedCount = assessments.filter((a) => a.status === 'passed').length
-  const activeCerts = certs.filter((c) => c.status === 'active').length
-  const expiringCerts = certs.filter((c) => c.status === 'expiring_soon').length
-  const complianceRate = assessments.length > 0 ? Math.round((passedCount / assessments.length) * 100) : 0
+  const assessments = dashData.assessments as Array<{
+    id: string; status: string; overall_score?: number | null; created_at: string; due_date?: string | null
+    template?: { title: string; category: string } | Array<{ title: string; category: string }> | null
+  }>
+  const certs = dashData.certificates as Array<{
+    id: string; status: string; expiry_date: string; issued_date: string
+    template?: { title: string } | Array<{ title: string }> | null
+  }>
 
   return (
     <>
@@ -56,11 +52,12 @@ export default async function StaffDashboardPage() {
           <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.6)', marginBottom: 4, letterSpacing: '0.05em', textTransform: 'uppercase' }}>Good day</div>
           <h2 style={{ fontSize: 22, fontWeight: 700, color: 'white', marginBottom: 4 }}>{profile?.full_name ?? 'My Competency Dashboard'}</h2>
           <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.7)' }}>{profile?.job_title ?? 'Track your assessments, certificates & renewals'}</div>
-          <div style={{ marginTop: 14, display: 'flex', gap: 10 }}>
+          <div style={{ marginTop: 14, display: 'flex', gap: 10, flexWrap: 'wrap' }}>
             {[
               { value: assessments.length, label: 'Assessments' },
-              { value: `${complianceRate}%`, label: 'Compliant' },
-              { value: activeCerts, label: 'Certificates' },
+              { value: `${dashData.complianceRate}%`, label: 'Compliant' },
+              { value: dashData.activeCerts, label: 'Certificates' },
+              { value: dashData.dueItems.length, label: 'Due Soon' },
             ].map((stat) => (
               <div key={stat.label} style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.2)', borderRadius: 8, padding: '7px 14px', textAlign: 'center' }}>
                 <div style={{ fontSize: 18, fontWeight: 700, color: 'white' }}>{stat.value}</div>
@@ -71,8 +68,8 @@ export default async function StaffDashboardPage() {
         </div>
         <div style={{ position: 'relative', textAlign: 'right' }}>
           <div style={{ width: 100, height: 100, background: 'rgba(255,255,255,0.08)', border: '2px solid rgba(255,255,255,0.15)', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 40, margin: '0 auto 10px' }}>👩‍⚕️</div>
-          <span style={{ background: 'rgba(76,175,80,0.3)', border: '1px solid rgba(76,175,80,0.5)', borderRadius: 20, padding: '4px 12px', fontSize: 11, color: '#A5D6A7', fontWeight: 600 }}>
-            ● {complianceRate}% Compliant
+          <span style={{ background: dashData.complianceRate >= 70 ? 'rgba(76,175,80,0.3)' : 'rgba(229,57,53,0.3)', border: `1px solid ${dashData.complianceRate >= 70 ? 'rgba(76,175,80,0.5)' : 'rgba(229,57,53,0.5)'}`, borderRadius: 20, padding: '4px 12px', fontSize: 11, color: dashData.complianceRate >= 70 ? '#A5D6A7' : '#FFCDD2', fontWeight: 600 }}>
+            ● {dashData.complianceRate}% Compliant
           </span>
         </div>
       </div>
@@ -86,21 +83,41 @@ export default async function StaffDashboardPage() {
         <div className="kpi-card">
           <div className="kpi-icon" style={{ background: '#E8F5E9' }}>✅</div>
           <div className="kpi-label">Passed</div>
-          <div className="kpi-value">{passedCount}</div>
+          <div className="kpi-value">{dashData.passed}</div>
           <div className="kpi-change up">of {assessments.length} total</div>
         </div>
         <div className="kpi-card">
           <div className="kpi-icon" style={{ background: '#E0F2F1' }}>🏅</div>
           <div className="kpi-label">Active Certificates</div>
-          <div className="kpi-value">{activeCerts}</div>
+          <div className="kpi-value">{dashData.activeCerts}</div>
         </div>
         <div className="kpi-card">
           <div className="kpi-icon" style={{ background: '#FFF8E1' }}>⚠️</div>
           <div className="kpi-label">Expiring Soon</div>
-          <div className="kpi-value">{expiringCerts}</div>
-          {expiringCerts > 0 && <div className="kpi-change down">Action needed</div>}
+          <div className="kpi-value">{dashData.expiringCerts}</div>
+          {dashData.expiringCerts > 0 && <div className="kpi-change down">Action needed</div>}
         </div>
       </div>
+
+      {/* Due items alert */}
+      {dashData.dueItems.length > 0 && (
+        <div style={{ background: '#FFF3E0', border: '1px solid #FFB300', borderRadius: 10, padding: '12px 18px', marginBottom: 20, display: 'flex', alignItems: 'center', gap: 12 }}>
+          <span style={{ fontSize: 20 }}>⏰</span>
+          <div>
+            <div style={{ fontWeight: 600, color: '#E65100' }}>{dashData.dueItems.length} assessment{dashData.dueItems.length > 1 ? 's' : ''} due within 7 days</div>
+            <div style={{ fontSize: 12, color: '#BF360C' }}>Please complete these assessments to stay compliant</div>
+          </div>
+          <Link href="/assessments" className="btn btn-sm" style={{ marginLeft: 'auto', background: '#E65100', color: 'white', border: 'none' }}>View</Link>
+        </div>
+      )}
+
+      <StaffDashboardCharts
+        passed={dashData.passed}
+        failed={assessments.filter((a) => a.status === 'failed').length}
+        pending={assessments.filter((a) => !['passed', 'failed'].includes(a.status)).length}
+        activeCerts={dashData.activeCerts}
+        expiringCerts={dashData.expiringCerts}
+      />
 
       <div className="grid-2" style={{ marginBottom: 20 }}>
         <div className="card">
@@ -147,7 +164,7 @@ export default async function StaffDashboardPage() {
           <div className="card-header">
             <div>
               <div className="card-title">My Certificates</div>
-              <div className="card-subtitle">{activeCerts} active</div>
+              <div className="card-subtitle">{dashData.activeCerts} active</div>
             </div>
             <Link href="/certificates" className="btn btn-secondary btn-sm">View All</Link>
           </div>

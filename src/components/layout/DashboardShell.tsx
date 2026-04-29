@@ -9,9 +9,10 @@ interface DashboardShellProps {
   user: User
   children: React.ReactNode
   breadcrumb?: { label: string; href?: string }[]
+  unreadCount?: number
 }
 
-export function DashboardShell({ user, children, breadcrumb }: DashboardShellProps) {
+export function DashboardShell({ user, children, breadcrumb, unreadCount = 0 }: DashboardShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   return (
@@ -26,6 +27,7 @@ export function DashboardShell({ user, children, breadcrumb }: DashboardShellPro
           user={user}
           breadcrumb={breadcrumb}
           onMenuClick={() => setSidebarOpen(true)}
+          unreadCount={unreadCount}
         />
         <main className="content">
           {children}

@@ -420,3 +420,113 @@ export interface ActionResult<T = void> {
   data?: T
   error?: string
 }
+
+// ─── Billing ──────────────────────────────────────────────────────────────────
+
+export type SubscriptionStatus = 'trial' | 'active' | 'past_due' | 'suspended' | 'cancelled' | 'read_only'
+export type BillingCycle = 'monthly' | 'yearly'
+export type InvoiceStatus = 'pending' | 'paid' | 'void' | 'refunded'
+export type DiscountType = 'percent' | 'fixed'
+export type SignupStatus = 'pending' | 'approved' | 'rejected'
+
+export interface Plan {
+  id: string
+  name: string
+  name_ar?: string
+  price_monthly: number
+  price_yearly: number
+  max_users: number
+  max_branches: number
+  max_departments: number
+  features: string[]
+  is_active: boolean
+  sort_order: number
+  created_at: string
+}
+
+export interface Coupon {
+  id: string
+  code: string
+  description?: string
+  discount_type: DiscountType
+  discount_value: number
+  applies_to_plan?: string
+  max_uses?: number
+  used_count: number
+  valid_from: string
+  valid_until?: string
+  is_active: boolean
+  created_by?: string
+  created_at: string
+}
+
+export interface Subscription {
+  id: string
+  hospital_id: string
+  plan_id: string
+  status: SubscriptionStatus
+  billing_cycle: BillingCycle
+  price_override?: number
+  coupon_id?: string
+  trial_ends_at?: string
+  current_period_start: string
+  current_period_end?: string
+  cancelled_at?: string
+  cancel_reason?: string
+  gateway: string
+  gateway_customer_id?: string
+  gateway_sub_id?: string
+  notes?: string
+  created_by?: string
+  created_at: string
+  updated_at: string
+  hospital?: Hospital
+  plan?: Plan
+  coupon?: Coupon
+}
+
+export interface Invoice {
+  id: string
+  invoice_number: string
+  hospital_id: string
+  subscription_id?: string
+  plan_id?: string
+  amount: number
+  tax: number
+  total: number
+  currency: string
+  status: InvoiceStatus
+  payment_method?: string
+  payment_ref?: string
+  paid_at?: string
+  period_start?: string
+  period_end?: string
+  notes?: string
+  created_by?: string
+  created_at: string
+  updated_at: string
+  hospital?: Hospital
+  plan?: Plan
+}
+
+export interface HospitalSignup {
+  id: string
+  hospital_name: string
+  hospital_name_ar?: string
+  city?: string
+  region?: string
+  license_number?: string
+  contact_name: string
+  contact_email: string
+  contact_phone?: string
+  plan_id: string
+  coupon_code?: string
+  message?: string
+  status: SignupStatus
+  reviewed_by?: string
+  reviewed_at?: string
+  rejection_reason?: string
+  hospital_id?: string
+  created_at: string
+  plan?: Plan
+}

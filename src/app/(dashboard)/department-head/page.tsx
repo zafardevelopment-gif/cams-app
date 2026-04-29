@@ -1,7 +1,9 @@
 import Link from 'next/link'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
-import { T, J } from '@/lib/db'
+import { T } from '@/lib/db'
+import { getDeptHeadDashboardData } from '@/actions/reports'
+import DeptHeadCharts from './DeptHeadCharts'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Department Head Dashboard — CAMS' }
@@ -17,15 +19,7 @@ export default async function DepartmentHeadPage() {
     .eq('id', authUser!.id)
     .single()
 
-  const [{ data: staff }, { data: pendingApprovals }, { data: assessments }] = await Promise.all([
-    admin.from(T.users).select('id').eq('department_id', profile?.department_id ?? '').eq('status', 'active'),
-    admin.from(T.approvals)
-      .select(`id, assessment:${J.assessments}!assessment_id(hospital_id)`)
-      .eq('status', 'pending'),
-    admin.from(T.assessments).select('id, status').eq('department_id', profile?.department_id ?? ''),
-  ])
-
-  const activeAssessments = (assessments ?? []).filter((a) => !['passed', 'failed'].includes(a.status)).length
+  const dashData = await getDeptHeadDashboardData(profile?.department_id ?? '', authUser!.id)
 
   return (
     <>
@@ -34,13 +28,17 @@ export default async function DepartmentHeadPage() {
           <h1>Department Dashboard</h1>
           <p>Overview for your department</p>
         </div>
+        <div className="page-header-actions">
+          <Link href="/reports" className="btn btn-secondary btn-sm">📥 Reports</Link>
+        </div>
       </div>
 
-      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(3, 1fr)' }}>
+      <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(4, 1fr)' }}>
         {[
-          { icon: '👥', label: 'Department Staff', value: (staff ?? []).length, bg: '#E3F2FD' },
-          { icon: '✍️', label: 'Pending Approvals', value: (pendingApprovals ?? []).length, bg: '#FFF3E0', alert: (pendingApprovals ?? []).length > 0 },
-          { icon: '✅', label: 'Active Assessments', value: activeAssessments, bg: '#E8F5E9' },
+          { icon: '👥', label: 'Team Size', value: dashData.teamSize, bg: '#E3F2FD' },
+          { icon: '📋', label: 'Pending Assessments', value: dashData.pendingAssessments, bg: '#FFF3E0' },
+          { icon: '⏰', label: 'Overdue Staff', value: dashData.overdueCount, bg: '#FFEBEE', alert: dashData.overdueCount > 0 },
+          { icon: '✍️', label: 'Approvals Needed', value: dashData.approvalsNeeded, bg: '#F3E5F5', alert: dashData.approvalsNeeded > 0 },
         ].map((k) => (
           <div key={k.label} className="kpi-card">
             <div className="kpi-icon" style={{ background: k.bg }}>{k.icon}</div>
@@ -51,12 +49,21 @@ export default async function DepartmentHeadPage() {
         ))}
       </div>
 
+      <DeptHeadCharts
+        trend={dashData.trend}
+        passed={dashData.passed}
+        failed={dashData.failed}
+        pending={dashData.pendingAssessments}
+        passRate={dashData.passRate}
+      />
+
       <div className="grid-4" style={{ marginTop: 24 }}>
         {[
           { href: '/staff-directory', icon: '👥', title: 'My Staff' },
           { href: '/head-nurse/approvals', icon: '✍️', title: 'Pending Approvals' },
           { href: '/assessments', icon: '✅', title: 'Assessments' },
           { href: '/hospital/units', icon: '🔲', title: 'Units' },
+          { href: '/reports', icon: '📈', title: 'Reports' },
         ].map((item) => (
           <Link key={item.href} href={item.href} style={{ textDecoration: 'none' }}>
             <div className="card" style={{ padding: 18, cursor: 'pointer', textAlign: 'center' }}>

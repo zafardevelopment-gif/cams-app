@@ -272,3 +272,70 @@ export const UpdateDepartmentSchema = z.object({
   branch_id: z.string().uuid().optional().or(z.literal('')),
   head_nurse_id: z.string().uuid().optional().or(z.literal('')),
 })
+
+// ── Billing ─────────────────────────────────────────────────
+
+export const HospitalSignupSchema = z.object({
+  hospital_name:    z.string().min(2, 'Hospital name is required').max(200).trim(),
+  hospital_name_ar: z.string().max(200).trim().optional().or(z.literal('')),
+  city:             z.string().max(100).trim().optional().or(z.literal('')),
+  region:           z.string().max(100).trim().optional().or(z.literal('')),
+  license_number:   z.string().max(80).trim().optional().or(z.literal('')),
+  contact_name:     z.string().min(2, 'Contact name is required').max(120).trim(),
+  contact_email:    z.string().email('Invalid email').max(254),
+  contact_phone:    z.string().max(30).trim().optional().or(z.literal('')),
+  plan_id:          z.enum(['trial', 'basic', 'pro', 'enterprise']),
+  coupon_code:      z.string().max(50).trim().optional().or(z.literal('')),
+  message:          z.string().max(1000).trim().optional().or(z.literal('')),
+})
+
+export const CreateSubscriptionSchema = z.object({
+  hospital_id:   z.string().uuid('Invalid hospital'),
+  plan_id:       z.enum(['trial', 'basic', 'pro', 'enterprise']),
+  billing_cycle: z.enum(['monthly', 'yearly']).default('monthly'),
+  status:        z.enum(['trial', 'active', 'past_due', 'suspended', 'cancelled', 'read_only']).default('trial'),
+  notes:         z.string().max(500).trim().optional().or(z.literal('')),
+})
+
+export const UpdateSubscriptionSchema = z.object({
+  plan_id:        z.enum(['trial', 'basic', 'pro', 'enterprise']).optional(),
+  billing_cycle:  z.enum(['monthly', 'yearly']).optional(),
+  status:         z.enum(['trial', 'active', 'past_due', 'suspended', 'cancelled', 'read_only']).optional(),
+  period_end:     z.string().optional().or(z.literal('')),
+  price_override: z.coerce.number().min(0).optional().nullable(),
+  notes:          z.string().max(500).trim().optional().or(z.literal('')),
+})
+
+export const CreateCouponSchema = z.object({
+  code:            z.string().min(3, 'Code must be at least 3 characters').max(30).trim(),
+  description:     z.string().max(200).trim().optional().or(z.literal('')),
+  discount_type:   z.enum(['percent', 'fixed']),
+  discount_value:  z.coerce.number().min(1, 'Discount must be at least 1').max(100000),
+  applies_to_plan: z.enum(['trial', 'basic', 'pro', 'enterprise']).optional().or(z.literal('')),
+  max_uses:        z.coerce.number().int().min(1).optional().nullable(),
+  valid_until:     z.string().optional().or(z.literal('')),
+})
+
+export const CreateInvoiceSchema = z.object({
+  hospital_id:     z.string().uuid('Invalid hospital'),
+  subscription_id: z.string().uuid().optional().or(z.literal('')),
+  plan_id:         z.enum(['trial', 'basic', 'pro', 'enterprise']).optional().or(z.literal('')),
+  amount:          z.coerce.number().min(0, 'Amount must be positive'),
+  tax:             z.coerce.number().min(0).optional().default(0),
+  payment_method:  z.string().max(50).optional().or(z.literal('')),
+  period_start:    z.string().optional().or(z.literal('')),
+  period_end:      z.string().optional().or(z.literal('')),
+  notes:           z.string().max(500).trim().optional().or(z.literal('')),
+})
+
+export const UpdateInvoiceSchema = z.object({
+  status:      z.enum(['pending', 'paid', 'void', 'refunded']),
+  payment_ref: z.string().max(200).trim().optional().or(z.literal('')),
+  notes:       z.string().max(500).trim().optional().or(z.literal('')),
+})
+
+export const ValidateCouponSchema = z.object({
+  code:    z.string().min(1).max(50).trim(),
+  plan_id: z.enum(['trial', 'basic', 'pro', 'enterprise']),
+})
+

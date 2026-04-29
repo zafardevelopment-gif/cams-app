@@ -85,6 +85,7 @@ function getNavConfig(role: string): NavSection[] {
           label: 'Admin',
           items: [
             { href: '/reports', icon: '📈', label: 'Reports' },
+            { href: '/billing', icon: '💳', label: 'Billing' },
             { href: '/settings', icon: '⚙️', label: 'Settings' },
             ...common.items,
           ],
