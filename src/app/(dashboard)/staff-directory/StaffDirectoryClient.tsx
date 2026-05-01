@@ -4,7 +4,7 @@ import { useState, useMemo, useTransition, useRef } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { getInitials, getAvatarColor, getRoleLabel, getRoleBadgeColor } from '@/lib/utils'
-import { archiveUser, restoreUser, createUser, adminResetPassword } from '@/actions/staff'
+import { archiveUser, restoreUser, createUser, adminResetPassword, editUser } from '@/actions/staff'
 import { assignUserRole } from '@/actions/roles'
 import { BulkImportModal } from './BulkImportModal'
 import { CreateUserModal } from './CreateUserModal'
@@ -55,6 +55,160 @@ function nameOf(raw: unknown): string {
   return obj?.name ?? '—'
 }
 
+function EditStaffModal({ staff, departments, branches, units, roleOptions, isPending, startTransition, onClose }: {
+  staff: StaffRow
+  departments: { id: string; name: string }[]
+  branches: { id: string; name: string }[]
+  units: { id: string; name: string; department_id: string | null; branch_id: string | null }[]
+  roleOptions: { role_key: string; display_name: string; is_system: boolean }[]
+  isPending: boolean
+  startTransition: (fn: () => Promise<void>) => void
+  onClose: () => void
+}) {
+  const deptId = Array.isArray(staff.department)
+    ? (staff.department[0] as { id?: string } | null)?.id ?? ''
+    : (staff.department as { id?: string } | null)?.id ?? ''
+  const branchId = Array.isArray(staff.branch)
+    ? (staff.branch[0] as { id?: string } | null)?.id ?? ''
+    : (staff.branch as { id?: string } | null)?.id ?? ''
+
+  const [fullName, setFullName]         = useState(staff.full_name)
+  const [jobTitle, setJobTitle]         = useState(staff.job_title ?? '')
+  const [phone, setPhone]               = useState('')
+  const [employeeId, setEmployeeId]     = useState(staff.employee_id ?? '')
+  const [license, setLicense]           = useState(staff.nursing_license ?? '')
+  const [licenseExpiry, setLicenseExpiry] = useState(staff.license_expiry ? staff.license_expiry.slice(0, 10) : '')
+  const [hiredDate, setHiredDate]       = useState(staff.hired_date ? staff.hired_date.slice(0, 10) : '')
+  const [role, setRole]                 = useState(staff.role)
+  const [departmentId, setDepartmentId] = useState(deptId)
+  const [branchId2, setBranchId]        = useState(branchId)
+  const [unitId, setUnitId]             = useState('')
+
+  const availableUnits = units.filter((u) =>
+    (!departmentId || u.department_id === departmentId) &&
+    (!branchId2 || u.branch_id === branchId2)
+  )
+
+  function handleSave() {
+    const fd = new FormData()
+    fd.append('full_name', fullName)
+    fd.append('job_title', jobTitle)
+    fd.append('phone', phone)
+    fd.append('employee_id', employeeId)
+    fd.append('nursing_license', license)
+    fd.append('license_expiry', licenseExpiry)
+    fd.append('hired_date', hiredDate)
+    fd.append('role', role)
+    fd.append('department_id', departmentId)
+    fd.append('branch_id', branchId2)
+    fd.append('unit_id', unitId)
+    startTransition(async () => {
+      const r = await editUser(staff.id, fd)
+      if (r.success) { toast.success('Staff updated'); onClose() }
+      else toast.error(r.error ?? 'Failed to save')
+    })
+  }
+
+  const SYSTEM_ROLES = ['staff','assessor','educator','head_nurse','unit_head','department_head','hr_quality','branch_admin','hospital_admin','auditor']
+
+  return (
+    <div className="modal-backdrop">
+      <div className="modal" style={{ maxWidth: 560 }}>
+        <div className="modal-header">
+          <h3>Edit Staff — {staff.full_name}</h3>
+          <button className="modal-close" onClick={onClose}>✕</button>
+        </div>
+        <div className="modal-body" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 16px' }}>
+          <div className="form-group">
+            <label className="form-label">Full Name *</label>
+            <input className="form-control" value={fullName} onChange={(e) => setFullName(e.target.value)} required />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Job Title</label>
+            <input className="form-control" value={jobTitle} onChange={(e) => setJobTitle(e.target.value)} placeholder="e.g. Staff Nurse" />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Employee ID</label>
+            <input className="form-control" value={employeeId} onChange={(e) => setEmployeeId(e.target.value)} placeholder="EMP-001" />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Phone</label>
+            <input className="form-control" value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+966…" />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Nursing License</label>
+            <input className="form-control" value={license} onChange={(e) => setLicense(e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">License Expiry</label>
+            <input type="date" className="form-control" value={licenseExpiry} onChange={(e) => setLicenseExpiry(e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Hired Date</label>
+            <input type="date" className="form-control" value={hiredDate} onChange={(e) => setHiredDate(e.target.value)} />
+          </div>
+          <div className="form-group">
+            <label className="form-label">Role *</label>
+            <select className="form-control" value={role} onChange={(e) => setRole(e.target.value)} required>
+              {roleOptions.length > 0 ? (
+                <>
+                  <optgroup label="System Roles">
+                    {roleOptions.filter((r) => r.is_system).map((r) => (
+                      <option key={r.role_key} value={r.role_key}>{r.display_name}</option>
+                    ))}
+                  </optgroup>
+                  {roleOptions.some((r) => !r.is_system) && (
+                    <optgroup label="Custom Roles">
+                      {roleOptions.filter((r) => !r.is_system).map((r) => (
+                        <option key={r.role_key} value={r.role_key}>{r.display_name}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                </>
+              ) : (
+                SYSTEM_ROLES.map((r) => <option key={r} value={r}>{getRoleLabel(r)}</option>)
+              )}
+            </select>
+          </div>
+          {departments.length > 0 && (
+            <div className="form-group">
+              <label className="form-label">Department</label>
+              <select className="form-control" value={departmentId} onChange={(e) => setDepartmentId(e.target.value)}>
+                <option value="">— None —</option>
+                {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+              </select>
+            </div>
+          )}
+          {branches.length > 0 && (
+            <div className="form-group">
+              <label className="form-label">Branch</label>
+              <select className="form-control" value={branchId2} onChange={(e) => setBranchId(e.target.value)}>
+                <option value="">— None —</option>
+                {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+              </select>
+            </div>
+          )}
+          {availableUnits.length > 0 && (
+            <div className="form-group">
+              <label className="form-label">Unit</label>
+              <select className="form-control" value={unitId} onChange={(e) => setUnitId(e.target.value)}>
+                <option value="">— None —</option>
+                {availableUnits.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+              </select>
+            </div>
+          )}
+        </div>
+        <div className="modal-footer">
+          <button className="btn btn-secondary" onClick={onClose}>Cancel</button>
+          <button className="btn btn-primary" onClick={handleSave} disabled={isPending || !fullName.trim()}>
+            {isPending ? 'Saving…' : '💾 Save Changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function StaffDirectoryClient({
   staff: allStaff, departments, branches, units, callerRole, callerHospitalId, canManage, expiringCount, expiredCount, roleOptions = [],
   hasBranches = true, hasDepartments = true,
@@ -76,6 +230,7 @@ export function StaffDirectoryClient({
   const [assignTarget, setAssignTarget] = useState<StaffRow | null>(null)
   const [assignRole, setAssignRole] = useState('')
   const [assignMultiRoles, setAssignMultiRoles] = useState<string[]>([])
+  const [editTarget, setEditTarget] = useState<StaffRow | null>(null)
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase()
@@ -307,6 +462,11 @@ export function StaffDirectoryClient({
                       <td>
                         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                           <Link href={`/staff-directory/${s.id}`} className="btn btn-secondary btn-sm">View</Link>
+                          {canManage && s.status !== 'inactive' && (
+                            <button className="btn btn-secondary btn-sm" onClick={() => setEditTarget(s)} title="Edit staff">
+                              ✏️ Edit
+                            </button>
+                          )}
                           {canManage && s.status !== 'inactive' && (
                             <button
                               className="btn btn-sm"
@@ -578,6 +738,20 @@ export function StaffDirectoryClient({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Edit Staff modal */}
+      {editTarget && (
+        <EditStaffModal
+          staff={editTarget}
+          departments={hasDepartments ? departments : []}
+          branches={hasBranches ? branches : []}
+          units={units}
+          roleOptions={roleOptions}
+          isPending={isPending}
+          startTransition={startTransition}
+          onClose={() => setEditTarget(null)}
+        />
       )}
 
       {showCreate && (
