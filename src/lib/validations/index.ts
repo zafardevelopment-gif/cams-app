@@ -35,11 +35,12 @@ export const UpdatePasswordSchema = z
 // ── Assessments ─────────────────────────────────────────────
 export const CreateAssessmentSchema = z.object({
   template_id: z.string().uuid('Invalid template'),
-  staff_id: z.string().uuid().optional().or(z.literal('')),
-  assessor_id: z.string().uuid().optional().or(z.literal('')),
+  staff_id:    z.string().uuid().optional().nullable().or(z.literal('')),
+  assessor_id: z.string().uuid().optional().nullable().or(z.literal('')),
   due_date: z
     .string()
     .optional()
+    .nullable()
     .or(z.literal(''))
     .refine((v) => !v || !isNaN(Date.parse(v)), { message: 'Invalid date' }),
 })
