@@ -97,42 +97,78 @@ function QuestionEditor({ q, onChange, onRemove }: {
       {/* MCQ / true_false options */}
       {(q.type === 'mcq' || q.type === 'true_false') && (
         <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 11, color: 'var(--gray-500)', marginBottom: 6, fontWeight: 500 }}>
+            ✅ Click an option to mark it as the correct answer
+          </div>
           {q.type === 'true_false'
             ? (
-              <div style={{ display: 'flex', gap: 12 }}>
-                {['True', 'False'].map((opt, i) => (
-                  <label key={opt} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, cursor: 'pointer' }}>
-                    <input type="radio" name={`tf-${q.id}`} checked={q.correct_index === i}
-                      onChange={() => onChange({ ...q, options: ['True', 'False'], correct_index: i })} />
-                    {opt} (correct)
-                  </label>
-                ))}
+              <div style={{ display: 'flex', gap: 8 }}>
+                {['True', 'False'].map((opt, i) => {
+                  const isCorrect = q.correct_index === i
+                  return (
+                    <div
+                      key={opt}
+                      onClick={() => onChange({ ...q, options: ['True', 'False'], correct_index: i })}
+                      style={{
+                        flex: 1, padding: '10px 14px', borderRadius: 8, cursor: 'pointer',
+                        border: `2px solid ${isCorrect ? 'var(--green, #22c55e)' : 'var(--gray-200)'}`,
+                        background: isCorrect ? '#F0FDF4' : 'white',
+                        display: 'flex', alignItems: 'center', gap: 8, fontWeight: isCorrect ? 600 : 400, fontSize: 13,
+                        transition: 'border-color 0.15s, background 0.15s',
+                      }}
+                    >
+                      <span style={{ fontSize: 16 }}>{isCorrect ? '✅' : '⬜'}</span>
+                      {opt}
+                      {isCorrect && <span style={{ marginLeft: 'auto', fontSize: 11, color: 'var(--green, #16a34a)', fontWeight: 600 }}>Correct</span>}
+                    </div>
+                  )
+                })}
               </div>
             )
             : (
               <>
-                {q.options.map((opt, i) => (
-                  <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center' }}>
-                    <input type="radio" name={`correct-${q.id}`} checked={q.correct_index === i}
-                      onChange={() => onChange({ ...q, correct_index: i })}
-                      title="Mark as correct answer" />
-                    <input
-                      className="form-control"
-                      style={{ flex: 1, fontSize: 12 }}
-                      value={opt}
-                      onChange={(e) => {
-                        const opts = [...q.options]; opts[i] = e.target.value
-                        onChange({ ...q, options: opts })
-                      }}
-                      placeholder={`Option ${i + 1}`}
-                    />
-                    <button type="button" style={{ background: 'none', border: 'none', color: 'var(--gray-400)', cursor: 'pointer' }}
-                      onClick={() => {
-                        const opts = q.options.filter((_, j) => j !== i)
-                        onChange({ ...q, options: opts, correct_index: Math.min(q.correct_index, opts.length - 1) })
-                      }}>✕</button>
-                  </div>
-                ))}
+                {q.options.map((opt, i) => {
+                  const isCorrect = q.correct_index === i
+                  return (
+                    <div key={i} style={{ display: 'flex', gap: 6, marginBottom: 6, alignItems: 'center' }}>
+                      <div
+                        onClick={() => onChange({ ...q, correct_index: i })}
+                        title="Mark as correct answer"
+                        style={{
+                          width: 32, height: 32, borderRadius: 8, cursor: 'pointer', flexShrink: 0,
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          border: `2px solid ${isCorrect ? 'var(--green, #22c55e)' : 'var(--gray-200)'}`,
+                          background: isCorrect ? '#F0FDF4' : 'white',
+                          fontSize: 16, transition: 'border-color 0.15s, background 0.15s',
+                        }}
+                      >
+                        {isCorrect ? '✅' : '⬜'}
+                      </div>
+                      <input
+                        className="form-control"
+                        style={{
+                          flex: 1, fontSize: 12,
+                          border: isCorrect ? '1.5px solid var(--green, #22c55e)' : undefined,
+                          background: isCorrect ? '#F0FDF4' : undefined,
+                        }}
+                        value={opt}
+                        onChange={(e) => {
+                          const opts = [...q.options]; opts[i] = e.target.value
+                          onChange({ ...q, options: opts })
+                        }}
+                        placeholder={`Option ${i + 1}`}
+                      />
+                      {isCorrect && (
+                        <span style={{ fontSize: 11, color: 'var(--green, #16a34a)', fontWeight: 600, flexShrink: 0 }}>✓ Correct</span>
+                      )}
+                      <button type="button" style={{ background: 'none', border: 'none', color: 'var(--gray-400)', cursor: 'pointer', flexShrink: 0 }}
+                        onClick={() => {
+                          const opts = q.options.filter((_, j) => j !== i)
+                          onChange({ ...q, options: opts, correct_index: Math.min(q.correct_index, opts.length - 1) })
+                        }}>✕</button>
+                    </div>
+                  )
+                })}
                 {q.options.length < 6 && (
                   <button type="button" className="btn btn-secondary btn-sm"
                     onClick={() => onChange({ ...q, options: [...q.options, ''] })}>
