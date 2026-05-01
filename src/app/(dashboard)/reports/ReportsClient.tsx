@@ -171,7 +171,7 @@ export default function ReportsClient({
       doc.text(`CAMS — ${reportType?.label ?? 'Report'}`, 14, 18)
       doc.setFontSize(9)
       doc.setFont('helvetica', 'normal')
-      doc.text(`${hospitalName} · Generated ${new Date().toLocaleDateString('en-SA')}`, 14, 30)
+      doc.text(`${selectedHospitalName} · Generated ${new Date().toLocaleDateString('en-SA')}`, 14, 30)
       doc.setTextColor(0, 0, 0)
 
       const { head, body } = buildPdfTable(activeReport, reportData)
