@@ -255,6 +255,9 @@ export async function evaluatorReview(
 
   const approvalLevels = template?.approval_levels ?? 3
 
+  // After evaluator submits, advance to head_nurse_review (or admin_review if 2-level)
+  const nextStatus = approvalLevels >= 3 ? 'head_nurse_review' : 'admin_review'
+
   await ctx.admin.from(T.assessments).update({
     knowledge_score:  parsed.data.knowledge_score ?? null,
     quiz_score:       effectiveQuizScore ?? null,
@@ -263,7 +266,7 @@ export async function evaluatorReview(
     practical_results: parsed.data.practical_results,
     evaluator_notes:  parsed.data.evaluator_notes || null,
     overall_score:    overall,
-    status:           'assessor_review',
+    status:           nextStatus,
     assessor_id:      assessment.assessor_id ?? ctx.authUser.id,
   }).eq('id', assessmentId)
 
