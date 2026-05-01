@@ -29,7 +29,7 @@ export default async function HospitalAdminPage() {
   const { data: profile } = await admin.from(T.users).select('hospital_id').eq('id', authUser!.id).single()
   const hospitalId = profile?.hospital_id ?? ''
 
-  const [{ data: recentAssessments }, { data: pendingRegs }, dashData, { data: branches }, { data: departments }, { data: units }, { data: competencies }, hospitalConfig] = await Promise.all([
+  const [{ data: recentAssessments }, { data: pendingRegs }, dashData, branchRes, deptRes, unitRes, compRes, hospitalConfig] = await Promise.all([
     admin.from(T.assessments)
       .select(`id, status, created_at, staff:${J.users}!staff_id(full_name, job_title), template:${J.competency_templates}!template_id(title)`)
       .eq('hospital_id', hospitalId)
@@ -49,10 +49,10 @@ export default async function HospitalAdminPage() {
     getHospitalConfig(hospitalId),
   ])
 
-  const branchCount = (branches as unknown as { count?: number } | null)?.count ?? 0
-  const deptCount   = (departments as unknown as { count?: number } | null)?.count ?? 0
-  const unitCount   = (units as unknown as { count?: number } | null)?.count ?? 0
-  const compCount   = (competencies as unknown as { count?: number } | null)?.count ?? 0
+  const branchCount = branchRes.count ?? 0
+  const deptCount   = deptRes.count ?? 0
+  const unitCount   = unitRes.count ?? 0
+  const compCount   = compRes.count ?? 0
 
   const finalSetupStep = computeSetupStep(hospitalConfig, {
     branchCount,
