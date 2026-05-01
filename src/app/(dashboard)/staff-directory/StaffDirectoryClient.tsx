@@ -25,12 +25,15 @@ interface Props {
   staff: StaffRow[]
   departments: { id: string; name: string }[]
   branches: { id: string; name: string }[]
+  units: { id: string; name: string; department_id: string | null; branch_id: string | null }[]
   callerRole: string
   callerHospitalId: string
   canManage: boolean
   expiringCount: number
   expiredCount: number
   roleOptions?: { role_key: string; display_name: string; is_system: boolean }[]
+  hasBranches?: boolean
+  hasDepartments?: boolean
 }
 
 const PAGE_SIZE = 25
@@ -44,7 +47,7 @@ function licenseStatus(exp?: string | null) {
   if (days < 0)  return { label: 'Expired', cls: 'badge-red' }
   if (days <= 30) return { label: `${days}d left`, cls: 'badge-red' }
   if (days <= 60) return { label: `${days}d left`, cls: 'badge-amber' }
-  return { label: new Date(exp).toLocaleDateString(), cls: 'badge-gray' }
+  return { label: new Date(exp).toLocaleDateString('en-CA'), cls: 'badge-gray' }
 }
 
 function nameOf(raw: unknown): string {
@@ -53,7 +56,8 @@ function nameOf(raw: unknown): string {
 }
 
 export function StaffDirectoryClient({
-  staff: allStaff, departments, branches, callerRole, callerHospitalId, canManage, expiringCount, expiredCount, roleOptions = [],
+  staff: allStaff, departments, branches, units, callerRole, callerHospitalId, canManage, expiringCount, expiredCount, roleOptions = [],
+  hasBranches = true, hasDepartments = true,
 }: Props) {
   const [search, setSearch] = useState('')
   const [filterRole, setFilterRole] = useState('')
@@ -216,13 +220,13 @@ export function StaffDirectoryClient({
           <option value="pending">Pending</option>
           <option value="suspended">Suspended</option>
         </select>
-        {departments.length > 0 && (
+        {hasDepartments && departments.length > 0 && (
           <select className="filter-select" value={filterDept} onChange={(e) => { setFilterDept(e.target.value); setPage(1) }}>
             <option value="">All Departments</option>
             {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
           </select>
         )}
-        {branches.length > 0 && (
+        {hasBranches && branches.length > 0 && (
           <select className="filter-select" value={filterBranch} onChange={(e) => { setFilterBranch(e.target.value); setPage(1) }}>
             <option value="">All Branches</option>
             {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
@@ -299,7 +303,7 @@ export function StaffDirectoryClient({
                         }
                       </td>
                       <td><span className={`badge ${STATUS_BADGE[s.status] ?? 'badge-gray'}`}>{s.status}</span></td>
-                      <td className="text-sm text-muted">{new Date(s.created_at).toLocaleDateString()}</td>
+                      <td className="text-sm text-muted">{new Date(s.created_at).toLocaleDateString('en-CA')}</td>
                       <td>
                         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                           <Link href={`/staff-directory/${s.id}`} className="btn btn-secondary btn-sm">View</Link>
@@ -578,8 +582,9 @@ export function StaffDirectoryClient({
 
       {showCreate && (
         <CreateUserModal
-          departments={departments}
-          branches={branches}
+          departments={hasDepartments ? departments : []}
+          branches={hasBranches ? branches : []}
+          units={units}
           roleOptions={roleOptions}
           onClose={() => setShowCreate(false)}
         />

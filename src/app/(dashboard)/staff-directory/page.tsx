@@ -23,7 +23,7 @@ export default async function StaffDirectoryPage() {
   const hospitalId = profile?.hospital_id ?? ''
   const isSuperAdmin = profile?.role === 'super_admin'
 
-  const [staffRes, deptRes, branchRes, hospitalConfig, roleDefs] = await Promise.all([
+  const [staffRes, deptRes, branchRes, unitRes, hospitalConfig, roleDefs] = await Promise.all([
     isSuperAdmin
       ? admin.from(T.users)
           .select(`id, full_name, email, job_title, role, employee_id, nursing_license, license_expiry, hired_date, status, created_at, hospital_id, department_id, branch_id, unit_id, archived_at, department:${J.departments}!department_id(name), branch:${J.branches}!branch_id(name)`)
@@ -36,7 +36,8 @@ export default async function StaffDirectoryPage() {
           .limit(500),
     admin.from(T.departments).select('id, name').eq('hospital_id', hospitalId).eq('is_active', true).order('name'),
     admin.from(T.branches).select('id, name').eq('hospital_id', hospitalId).eq('is_active', true).order('name'),
-    !isSuperAdmin && profile?.role === 'hospital_admin' ? getHospitalConfig(hospitalId) : Promise.resolve(null),
+    admin.from(T.units).select('id, name, department_id, branch_id').eq('hospital_id', hospitalId).eq('is_active', true).order('name'),
+    !isSuperAdmin && hospitalId ? getHospitalConfig(hospitalId) : Promise.resolve(null),
     !isSuperAdmin ? getRoleDefinitions(hospitalId) : Promise.resolve([]),
   ])
 
@@ -68,12 +69,15 @@ export default async function StaffDirectoryPage() {
       staff={staffRes.data ?? []}
       departments={deptRes.data ?? []}
       branches={branchRes.data ?? []}
+      units={unitRes.data ?? []}
       callerRole={profile?.role ?? 'staff'}
       callerHospitalId={hospitalId}
       canManage={canManage}
       expiringCount={expiringLicenses.length}
       expiredCount={expiredLicenses.length}
       roleOptions={roleOptions}
+      hasBranches={isSuperAdmin ? true : (hospitalConfig?.hasBranches ?? true)}
+      hasDepartments={isSuperAdmin ? true : (hospitalConfig?.hasDepartments ?? true)}
     />
   )
 }

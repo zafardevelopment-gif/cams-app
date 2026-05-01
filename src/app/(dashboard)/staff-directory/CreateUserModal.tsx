@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useMemo, useTransition } from 'react'
 import { toast } from 'sonner'
 import { createUser } from '@/actions/staff'
 import { getRoleLabel } from '@/lib/utils'
@@ -11,11 +11,40 @@ interface RoleOption {
   is_system: boolean
 }
 
+interface UnitRow {
+  id: string
+  name: string
+  department_id: string | null
+  branch_id: string | null
+}
+
 interface Props {
   departments: { id: string; name: string }[]
   branches: { id: string; name: string }[]
+  units: UnitRow[]
   roleOptions?: RoleOption[]
   onClose: () => void
+}
+
+// Which org fields each role needs
+type OrgLevel = 'none' | 'branch' | 'branch+dept' | 'branch+dept+unit'
+
+const ROLE_ORG: Record<string, OrgLevel> = {
+  super_admin:      'none',
+  hospital_admin:   'none',
+  hr_quality:       'none',
+  auditor:          'none',
+  branch_admin:     'branch',
+  department_head:  'branch+dept',
+  unit_head:        'branch+dept+unit',
+  head_nurse:       'branch+dept+unit',
+  educator:         'branch+dept',
+  assessor:         'branch+dept',
+  staff:            'branch+dept+unit',
+}
+
+function orgLevel(role: string): OrgLevel {
+  return ROLE_ORG[role] ?? 'branch+dept+unit'
 }
 
 const EMPTY = {
@@ -24,14 +53,62 @@ const EMPTY = {
   department_id: '', branch_id: '', unit_id: '',
 }
 
-export function CreateUserModal({ departments, branches, roleOptions = [], onClose }: Props) {
+export function CreateUserModal({ departments, branches, units, roleOptions = [], onClose }: Props) {
   const [form, setForm] = useState(EMPTY)
   const [isPending, startTransition] = useTransition()
-  const set = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-    setForm((f) => ({ ...f, [k]: e.target.value }))
+
+  const set = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+    const val = e.target.value
+    setForm((f) => {
+      const next = { ...f, [k]: val }
+      // Cascade: branch change resets department + unit
+      if (k === 'branch_id') { next.department_id = ''; next.unit_id = '' }
+      // Cascade: department change resets unit
+      if (k === 'department_id') { next.unit_id = '' }
+      // Role change resets org fields
+      if (k === 'role') { next.branch_id = ''; next.department_id = ''; next.unit_id = '' }
+      return next
+    })
+  }
+
+  const level = orgLevel(form.role)
+  const showBranch = branches.length > 0 && (level === 'branch' || level === 'branch+dept' || level === 'branch+dept+unit')
+  const showDept   = departments.length > 0 && (level === 'branch+dept' || level === 'branch+dept+unit')
+  const showUnit   = units.length > 0 && level === 'branch+dept+unit'
+
+  // Filter departments by selected branch (if branch selected)
+  const filteredDepts = useMemo(() => {
+    if (!form.branch_id) return departments
+    // Departments that have at least one unit in this branch, OR all depts if no branch-dept link exists in units
+    const deptsWithBranchUnits = new Set(
+      units.filter((u) => u.branch_id === form.branch_id && u.department_id).map((u) => u.department_id!)
+    )
+    if (deptsWithBranchUnits.size === 0) return departments
+    return departments.filter((d) => deptsWithBranchUnits.has(d.id))
+  }, [departments, units, form.branch_id])
+
+  // Filter units by selected department (and branch if set)
+  const filteredUnits = useMemo(() => {
+    return units.filter((u) => {
+      if (form.department_id && u.department_id !== form.department_id) return false
+      if (form.branch_id && u.branch_id && u.branch_id !== form.branch_id) return false
+      return true
+    })
+  }, [units, form.department_id, form.branch_id])
+
+  // Required org field validation
+  function validate(): string | null {
+    if (level === 'branch' && branches.length > 0 && !form.branch_id) return 'Branch is required for this role'
+    if ((level === 'branch+dept' || level === 'branch+dept+unit') && departments.length > 0 && !form.department_id) {
+      return 'Department is required for this role'
+    }
+    return null
+  }
 
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    const err = validate()
+    if (err) { toast.error(err); return }
     const fd = new FormData()
     Object.entries(form).forEach(([k, v]) => fd.set(k, v))
     startTransition(async () => {
@@ -55,6 +132,8 @@ export function CreateUserModal({ departments, branches, roleOptions = [], onClo
         </div>
         <form onSubmit={handleSubmit}>
           <div className="modal-body" style={{ maxHeight: '70vh', overflowY: 'auto' }}>
+
+            {/* Row 1: Name + Email */}
             <div className="grid-2">
               <div className="form-group">
                 <label className="form-label">Full Name *</label>
@@ -65,6 +144,8 @@ export function CreateUserModal({ departments, branches, roleOptions = [], onClo
                 <input type="email" className="form-control" value={form.email} onChange={set('email')} required />
               </div>
             </div>
+
+            {/* Row 2: Password + Role */}
             <div className="grid-2">
               <div className="form-group">
                 <label className="form-label">Password *</label>
@@ -97,6 +178,8 @@ export function CreateUserModal({ departments, branches, roleOptions = [], onClo
                 </select>
               </div>
             </div>
+
+            {/* Row 3: Job Title + Phone */}
             <div className="grid-2">
               <div className="form-group">
                 <label className="form-label">Job Title</label>
@@ -107,6 +190,8 @@ export function CreateUserModal({ departments, branches, roleOptions = [], onClo
                 <input type="tel" className="form-control" value={form.phone} onChange={set('phone')} />
               </div>
             </div>
+
+            {/* Row 4: Employee ID + Nursing License */}
             <div className="grid-2">
               <div className="form-group">
                 <label className="form-label">Employee ID</label>
@@ -117,6 +202,8 @@ export function CreateUserModal({ departments, branches, roleOptions = [], onClo
                 <input className="form-control" value={form.nursing_license} onChange={set('nursing_license')} />
               </div>
             </div>
+
+            {/* Row 5: License Expiry + Hired Date */}
             <div className="grid-2">
               <div className="form-group">
                 <label className="form-label">License Expiry</label>
@@ -127,22 +214,79 @@ export function CreateUserModal({ departments, branches, roleOptions = [], onClo
                 <input type="date" className="form-control" value={form.hired_date} onChange={set('hired_date')} />
               </div>
             </div>
-            <div className="grid-2">
-              <div className="form-group">
-                <label className="form-label">Department</label>
-                <select className="form-control" value={form.department_id} onChange={set('department_id')}>
-                  <option value="">None</option>
-                  {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
-                </select>
+
+            {/* Org section — only when role is selected and at least one field is needed */}
+            {form.role && (showBranch || showDept || showUnit) && (
+              <div style={{ borderTop: '1px solid var(--gray-100)', paddingTop: 14, marginTop: 4 }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
+                  Organization Assignment
+                </div>
+
+                {/* Branch row */}
+                {showBranch && (
+                  <div className="form-group">
+                    <label className="form-label">
+                      Branch {level === 'branch' ? '*' : ''}
+                    </label>
+                    <select
+                      className="form-control"
+                      value={form.branch_id}
+                      onChange={set('branch_id')}
+                      required={level === 'branch' && branches.length > 0}
+                    >
+                      <option value="">— None —</option>
+                      {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                    </select>
+                  </div>
+                )}
+
+                {/* Dept + Unit in a 2-col grid when both visible */}
+                {showDept && showUnit ? (
+                  <div className="grid-2">
+                    <div className="form-group">
+                      <label className="form-label">Department *</label>
+                      <select
+                        className="form-control"
+                        value={form.department_id}
+                        onChange={set('department_id')}
+                        required={departments.length > 0}
+                      >
+                        <option value="">— None —</option>
+                        {filteredDepts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                      </select>
+                    </div>
+                    <div className="form-group">
+                      <label className="form-label">Unit</label>
+                      <select
+                        className="form-control"
+                        value={form.unit_id}
+                        onChange={set('unit_id')}
+                        disabled={filteredUnits.length === 0}
+                      >
+                        <option value="">— None —</option>
+                        {filteredUnits.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                ) : showDept ? (
+                  <div className="form-group">
+                    <label className="form-label">
+                      Department {(level === 'branch+dept' || level === 'branch+dept+unit') ? '*' : ''}
+                    </label>
+                    <select
+                      className="form-control"
+                      value={form.department_id}
+                      onChange={set('department_id')}
+                      required={departments.length > 0}
+                    >
+                      <option value="">— None —</option>
+                      {filteredDepts.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+                    </select>
+                  </div>
+                ) : null}
               </div>
-              <div className="form-group">
-                <label className="form-label">Branch</label>
-                <select className="form-control" value={form.branch_id} onChange={set('branch_id')}>
-                  <option value="">None</option>
-                  {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
-                </select>
-              </div>
-            </div>
+            )}
+
           </div>
           <div className="modal-footer">
             <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>
