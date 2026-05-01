@@ -10,7 +10,18 @@ interface ImportResult {
 interface Props { onClose: () => void }
 
 const TEMPLATE_HEADERS = 'full_name,email,password,role,job_title,phone,employee_id,nursing_license,license_expiry,hired_date'
-const TEMPLATE_EXAMPLE = 'Reem Al-Otaibi,reem@hospital.sa,ChangeMe@123,staff,Senior Nurse,+966500000001,EMP-001,SCH-0001,2026-12-31,2020-01-15'
+
+const TEMPLATE_ROWS = [
+  'Reem Al-Otaibi,reem@hospital.sa,ChangeMe@123,staff,Staff Nurse,+966500000001,EMP-001,SCH-0001,2026-12-31,2020-01-15',
+  'Ahmed Al-Rashidi,ahmed.assessor@hospital.sa,ChangeMe@123,assessor,Clinical Assessor,+966500000002,EMP-002,,,,',
+  'Sara Mahmoud,sara.educator@hospital.sa,ChangeMe@123,educator,Clinical Educator,+966500000003,EMP-003,,,,',
+  'Fatima Hassan,fatima.hn@hospital.sa,ChangeMe@123,head_nurse,Head Nurse,+966500000004,EMP-004,,,,',
+  'Khalid Al-Amri,khalid.unit@hospital.sa,ChangeMe@123,unit_head,Unit Head,+966500000005,EMP-005,,,,',
+  'Nora Al-Zahrani,nora.dept@hospital.sa,ChangeMe@123,department_head,Department Head,+966500000006,EMP-006,,,,',
+  'Omar Al-Ghamdi,omar.hr@hospital.sa,ChangeMe@123,hr_quality,HR & Quality Officer,+966500000007,EMP-007,,,,',
+  'Layla Al-Qahtani,layla.branch@hospital.sa,ChangeMe@123,branch_admin,Branch Administrator,+966500000008,EMP-008,,,,',
+  'Tariq Al-Dossari,tariq.auditor@hospital.sa,ChangeMe@123,auditor,Compliance Auditor,+966500000009,EMP-009,,,,',
+]
 
 export function BulkImportModal({ onClose }: Props) {
   const [csvText, setCsvText] = useState('')
@@ -62,7 +73,7 @@ export function BulkImportModal({ onClose }: Props) {
   }
 
   function downloadTemplate() {
-    const csv = `${TEMPLATE_HEADERS}\n${TEMPLATE_EXAMPLE}`
+    const csv = [TEMPLATE_HEADERS, ...TEMPLATE_ROWS].join('\n')
     const blob = new Blob([csv], { type: 'text/csv' })
     const a = document.createElement('a')
     a.href = URL.createObjectURL(blob)
@@ -99,7 +110,7 @@ export function BulkImportModal({ onClose }: Props) {
                   rows={10}
                   value={csvText}
                   onChange={(e) => setCsvText(e.target.value)}
-                  placeholder={`${TEMPLATE_HEADERS}\n${TEMPLATE_EXAMPLE}`}
+                  placeholder={`${TEMPLATE_HEADERS}\n${TEMPLATE_ROWS[0]}\n…`}
                   style={{ fontFamily: 'monospace', fontSize: 12 }}
                 />
               </div>
