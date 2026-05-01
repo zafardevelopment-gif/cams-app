@@ -26,7 +26,7 @@ export default async function SuperAdminPage() {
           <p>All hospitals · Live data</p>
         </div>
         <div className="page-header-actions">
-          <Link href="/super-admin/settings" className="btn btn-secondary btn-sm">⚙️ Settings</Link>
+          <Link href="/super-admin/users" className="btn btn-secondary btn-sm">👥 Users</Link>
           <Link href="/reports" className="btn btn-secondary btn-sm">📥 Reports</Link>
           <Link href="/super-admin/hospitals" className="btn btn-primary btn-sm">＋ Add Hospital</Link>
         </div>
@@ -187,7 +187,7 @@ export default async function SuperAdminPage() {
       <div className="grid-4">
         {[
           { href: '/super-admin/hospitals', icon: '🏥', title: 'Manage Hospitals', sub: 'Add, edit, suspend hospital accounts' },
-          { href: '/staff-directory', icon: '👥', title: 'All Users', sub: 'View and manage all platform users' },
+          { href: '/super-admin/users', icon: '👥', title: 'All Users', sub: 'View and manage all platform users' },
           { href: '/reports', icon: '📊', title: 'Platform Reports', sub: 'Export and analyze compliance data' },
           { href: '/settings', icon: '⚙️', title: 'Platform Settings', sub: 'Email templates, branding, config' },
         ].map((item) => (

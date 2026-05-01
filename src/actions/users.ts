@@ -273,3 +273,41 @@ export async function updateUserStatus(
   revalidatePath('/staff-directory')
   return { success: true }
 }
+
+export async function deleteUserAccount(userId: string): Promise<ActionResult> {
+  const supabase = await createClient()
+  const { data: { user: authUser } } = await supabase.auth.getUser()
+  if (!authUser) return { success: false, error: 'Unauthorized' }
+  if (userId === authUser.id) return { success: false, error: 'You cannot delete your own account' }
+
+  const admin = createAdminClient()
+  const { data: caller } = await admin.from(T.users).select('role').eq('id', authUser.id).single()
+  if (!caller || caller.role !== 'super_admin') return { success: false, error: 'Insufficient permissions' }
+
+  const { data: target } = await admin.from(T.users).select('full_name, email, role').eq('id', userId).single()
+  if (!target) return { success: false, error: 'User not found' }
+  if (target.role === 'super_admin') return { success: false, error: 'Cannot delete another super admin' }
+
+  // Remove profile row first (cascade deletes may handle related rows depending on schema)
+  const { error: dbErr } = await admin.from(T.users).delete().eq('id', userId)
+  if (dbErr) return { success: false, error: dbErr.message }
+
+  // Remove auth user
+  const { error: authErr } = await admin.auth.admin.deleteUser(userId)
+  if (authErr) {
+    // Profile is already gone — log but don't block
+    console.error('[deleteUserAccount] auth delete failed:', authErr.message)
+  }
+
+  await admin.from(T.activity_logs).insert({
+    user_id: authUser.id,
+    action: 'delete_user',
+    entity_type: 'user',
+    entity_id: userId,
+    description: `Deleted user ${target.full_name} (${target.email})`,
+    metadata: { role: target.role },
+  })
+
+  revalidatePath('/super-admin/users')
+  return { success: true }
+}

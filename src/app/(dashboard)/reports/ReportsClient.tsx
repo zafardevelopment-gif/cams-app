@@ -11,6 +11,7 @@ import {
   getTemplateUsageReport,
   getBranchComparisonReport,
   getDepartmentPerformanceReport,
+  getHospitalFilterOptions,
   type ReportFilters,
 } from '@/actions/reports'
 import {
@@ -36,29 +37,61 @@ const REPORT_TYPES = [
 type ReportData = unknown[]
 
 export default function ReportsClient({
-  hospitalId,
+  hospitalId: initialHospitalId,
   role,
-  hospitalName,
-  branches,
-  departments,
+  hospitalName: initialHospitalName,
+  branches: initialBranches,
+  departments: initialDepartments,
+  allHospitals,
 }: {
   hospitalId: string
   role: string
   hospitalName: string
   branches: FilterOption[]
   departments: FilterOption[]
+  allHospitals: FilterOption[]
 }) {
+  const isSuperAdmin = role === 'super_admin'
   const [isPending, startTransition] = useTransition()
   const [activeReport, setActiveReport] = useState<string | null>(null)
   const [reportData, setReportData] = useState<ReportData>([])
+
+  // Hospital picker state (super_admin only)
+  const [selectedHospitalId, setSelectedHospitalId] = useState(initialHospitalId)
+  const [selectedHospitalName, setSelectedHospitalName] = useState(initialHospitalName)
+  const [hospitalSearch, setHospitalSearch] = useState(initialHospitalName)
+  const [showHospitalDropdown, setShowHospitalDropdown] = useState(false)
+  const [branches, setBranches] = useState<FilterOption[]>(initialBranches)
+  const [departments, setDepartments] = useState<FilterOption[]>(initialDepartments)
+  const [isLoadingHospital, setIsLoadingHospital] = useState(false)
+
   const [filters, setFilters] = useState<ReportFilters>({
-    hospitalId,
+    hospitalId: initialHospitalId,
     branchId: '',
     departmentId: '',
     status: '',
     dateFrom: '',
     dateTo: '',
   })
+
+  const filteredHospitals = allHospitals.filter((h) =>
+    h.name.toLowerCase().includes(hospitalSearch.toLowerCase())
+  )
+
+  async function selectHospital(h: FilterOption) {
+    setSelectedHospitalId(h.id)
+    setSelectedHospitalName(h.name)
+    setHospitalSearch(h.name)
+    setShowHospitalDropdown(false)
+    setFilters((f) => ({ ...f, hospitalId: h.id, branchId: '', departmentId: '' }))
+    setActiveReport(null)
+    setReportData([])
+    setIsLoadingHospital(true)
+    const result = await getHospitalFilterOptions(h.id)
+    setBranches(result.branches)
+    setDepartments(result.departments)
+    setIsLoadingHospital(false)
+  }
 
   function setFilter(key: keyof ReportFilters, value: string) {
     setFilters((f) => ({ ...f, [key]: value || undefined }))
@@ -67,6 +100,7 @@ export default function ReportsClient({
   function activeFilters(): ReportFilters {
     return {
       ...filters,
+      hospitalId: selectedHospitalId || undefined,
       branchId: filters.branchId || undefined,
       departmentId: filters.departmentId || undefined,
       status: filters.status || undefined,
@@ -76,10 +110,15 @@ export default function ReportsClient({
   }
 
   function runReport(reportId: string) {
+    if (isSuperAdmin && !selectedHospitalId) {
+      toast.error('Please select a hospital first')
+      return
+    }
     setActiveReport(reportId)
     setReportData([])
     startTransition(async () => {
       const f = activeFilters()
+      const hid = selectedHospitalId
       let result: { success: boolean; data?: unknown[]; error?: string } | null = null
 
       if (reportId === 'competency_matrix') result = await getStaffCompetencyMatrix(f)
@@ -89,12 +128,10 @@ export default function ReportsClient({
       else if (reportId === 'transfers') result = await getTransferHistoryReport(f)
       else if (reportId === 'template_usage') result = await getTemplateUsageReport(f)
       else if (reportId === 'branch_comparison') {
-        const r = await getBranchComparisonReport(hospitalId)
-        result = r
+        result = await getBranchComparisonReport(hid)
       }
       else if (reportId === 'dept_performance') {
-        const r = await getDepartmentPerformanceReport(hospitalId, f)
-        result = r
+        result = await getDepartmentPerformanceReport(hid, f)
       }
 
       if (!result) return
@@ -164,7 +201,7 @@ export default function ReportsClient({
       <div className="page-header">
         <div className="page-header-left">
           <h1>Reports & Analytics</h1>
-          <p>{hospitalName} · Real-time data</p>
+          <p>{selectedHospitalName ? `${selectedHospitalName} · Real-time data` : 'Select a hospital to begin'}</p>
         </div>
         <div className="page-header-actions">
           <button className="btn btn-secondary btn-sm" onClick={exportExcel} disabled={reportData.length === 0 || isPending}>
@@ -175,6 +212,60 @@ export default function ReportsClient({
           </button>
         </div>
       </div>
+
+      {/* Hospital picker — super_admin only */}
+      {isSuperAdmin && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div className="card-body" style={{ display: 'flex', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap' }}>
+            <div style={{ flex: '1 1 320px', maxWidth: 480, position: 'relative' }}>
+              <label className="form-label" style={{ fontWeight: 600 }}>🏥 Select Hospital</label>
+              <input
+                className="form-input"
+                placeholder="Type to search hospitals…"
+                value={hospitalSearch}
+                onChange={(e) => { setHospitalSearch(e.target.value); setShowHospitalDropdown(true) }}
+                onFocus={() => setShowHospitalDropdown(true)}
+                onBlur={() => setTimeout(() => setShowHospitalDropdown(false), 180)}
+                autoComplete="off"
+              />
+              {showHospitalDropdown && filteredHospitals.length > 0 && (
+                <div style={{
+                  position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 50,
+                  background: 'white', border: '1px solid var(--border)', borderRadius: 8,
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.12)', maxHeight: 260, overflowY: 'auto', marginTop: 2,
+                }}>
+                  {filteredHospitals.map((h) => (
+                    <div
+                      key={h.id}
+                      style={{
+                        padding: '10px 14px', cursor: 'pointer', fontSize: 13,
+                        background: h.id === selectedHospitalId ? '#EBF3FF' : 'white',
+                        fontWeight: h.id === selectedHospitalId ? 600 : 400,
+                      }}
+                      onMouseDown={() => selectHospital(h)}
+                    >
+                      🏥 {h.name}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            {isLoadingHospital && (
+              <div style={{ fontSize: 12, color: 'var(--gray-400)', alignSelf: 'center' }}>Loading hospital data…</div>
+            )}
+            {selectedHospitalId && !isLoadingHospital && (
+              <div style={{ fontSize: 12, color: 'var(--green)', alignSelf: 'center', fontWeight: 600 }}>
+                ✓ {selectedHospitalName} selected
+              </div>
+            )}
+            {!selectedHospitalId && (
+              <div style={{ fontSize: 12, color: 'var(--gray-400)', alignSelf: 'center' }}>
+                Select a hospital to enable reports
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Filters */}
       <div className="card" style={{ marginBottom: 20 }}>
@@ -193,14 +284,14 @@ export default function ReportsClient({
             </div>
             <div>
               <label className="form-label">Branch</label>
-              <select className="form-input" value={filters.branchId ?? ''} onChange={(e) => setFilter('branchId', e.target.value)}>
+              <select className="form-input" value={filters.branchId ?? ''} onChange={(e) => setFilter('branchId', e.target.value)} disabled={!selectedHospitalId}>
                 <option value="">All Branches</option>
                 {branches.map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
             </div>
             <div>
               <label className="form-label">Department</label>
-              <select className="form-input" value={filters.departmentId ?? ''} onChange={(e) => setFilter('departmentId', e.target.value)}>
+              <select className="form-input" value={filters.departmentId ?? ''} onChange={(e) => setFilter('departmentId', e.target.value)} disabled={!selectedHospitalId}>
                 <option value="">All Departments</option>
                 {departments.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
               </select>

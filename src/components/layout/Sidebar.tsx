@@ -42,6 +42,7 @@ function getNavConfig(role: string): NavSection[] {
           label: 'Analytics',
           items: [
             { href: '/reports', icon: '📈', label: 'Reports' },
+            { href: '/super-admin/reports', icon: '📊', label: 'Platform Report' },
             { href: '/super-admin/audit-logs', icon: '🔍', label: 'Audit Logs' },
           ],
         },

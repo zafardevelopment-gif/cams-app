@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { updateSubscription } from '@/actions/billing'
+import { updateSubscription, deleteHospital } from '@/actions/billing'
 
 interface Hospital {
   id: string
@@ -45,6 +45,7 @@ export default function HospitalsClient({
   const [isPending, startTransition] = useTransition()
   const [suspendId, setSuspendId] = useState<string | null>(null)
   const [activateId, setActivateId] = useState<string | null>(null)
+  const [deleteId, setDeleteId] = useState<string | null>(null)
 
   const filtered = hospitals.filter((h) => {
     const sub = subMap[h.id]
@@ -56,6 +57,13 @@ export default function HospitalsClient({
 
   function action(fn: () => Promise<void>) {
     startTransition(async () => { await fn() })
+  }
+
+  async function handleDelete(hospitalId: string) {
+    const r = await deleteHospital(hospitalId)
+    if (r.success) { toast.success('Hospital deleted'); window.location.reload() }
+    else toast.error(r.error ?? 'Failed to delete')
+    setDeleteId(null)
   }
 
   async function toggleSuspend(hospitalId: string, suspend: boolean) {
@@ -196,6 +204,14 @@ export default function HospitalsClient({
                                 </button>
                               )
                           )}
+                          <button
+                            className="btn btn-danger btn-sm"
+                            disabled={isPending}
+                            onClick={() => setDeleteId(h.id)}
+                            title="Delete hospital"
+                          >
+                            🗑️
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -232,6 +248,32 @@ export default function HospitalsClient({
                 {isPending ? 'Suspending…' : 'Confirm Suspend'}
               </button>
               <button className="btn btn-secondary" onClick={() => setSuspendId(null)}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete confirm modal */}
+      {deleteId && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div style={{ background: 'white', borderRadius: 14, padding: 28, width: 420 }}>
+            <h3 style={{ marginBottom: 10, color: 'var(--red)' }}>Delete Hospital?</h3>
+            <p style={{ fontSize: 13, color: 'var(--gray-700)', marginBottom: 8 }}>
+              You are about to permanently delete <strong>{hospitals.find((h) => h.id === deleteId)?.name}</strong>.
+            </p>
+            <p style={{ fontSize: 12, color: 'var(--red)', marginBottom: 20, background: '#FFEBEE', padding: '8px 12px', borderRadius: 6 }}>
+              This cannot be undone. The hospital and all associated data will be removed.
+              This will fail if the hospital has active staff.
+            </p>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button
+                className="btn btn-danger"
+                disabled={isPending}
+                onClick={() => action(() => handleDelete(deleteId))}
+              >
+                {isPending ? 'Deleting…' : 'Delete Permanently'}
+              </button>
+              <button className="btn btn-secondary" onClick={() => setDeleteId(null)}>Cancel</button>
             </div>
           </div>
         </div>

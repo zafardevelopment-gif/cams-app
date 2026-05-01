@@ -675,6 +675,37 @@ export async function deletePlan(planId: string): Promise<ActionResult> {
   return { success: true }
 }
 
+// ─── Delete hospital ─────────────────────────────────────────────────────────
+
+export async function deleteHospital(hospitalId: string): Promise<ActionResult> {
+  const ctx = await getSuperAdminCaller()
+  if (!ctx) return { success: false, error: 'Unauthorized' }
+
+  // Check for active staff users
+  const { count: userCount } = await ctx.admin
+    .from(T.users)
+    .select('id', { count: 'exact', head: true })
+    .eq('hospital_id', hospitalId)
+    .eq('status', 'active')
+
+  if ((userCount ?? 0) > 0) {
+    return { success: false, error: `Cannot delete: hospital has ${userCount} active staff. Suspend it instead.` }
+  }
+
+  const { error } = await ctx.admin.from(T.hospitals).delete().eq('id', hospitalId)
+  if (error) return { success: false, error: 'Failed to delete hospital: ' + error.message }
+
+  await ctx.admin.from(T.activity_logs).insert({
+    user_id: ctx.userId,
+    action: 'delete_hospital',
+    entity_type: 'hospital',
+    entity_id: hospitalId,
+    description: 'Hospital deleted by super admin',
+  })
+
+  return { success: true }
+}
+
 // ─── Self-service signup: complete payment + provision hospital ───────────────
 
 /** Called after mock payment success. Creates hospital, admin user, subscription, invoice. */

@@ -460,6 +460,169 @@ export async function getAuditorDashboardData(hospitalId: string) {
   }
 }
 
+// ─── Hospital filter options (for super_admin hospital picker) ────────────────
+
+export async function getHospitalFilterOptions(hospitalId: string) {
+  const admin = createAdminClient()
+  const [{ data: branches }, { data: departments }] = await Promise.all([
+    admin.from(T.branches).select('id, name').eq('hospital_id', hospitalId).eq('is_active', true).order('name'),
+    admin.from(T.departments).select('id, name').eq('hospital_id', hospitalId).eq('is_active', true).order('name'),
+  ])
+  return { branches: branches ?? [], departments: departments ?? [] }
+}
+
+// ─── Platform-wide super admin report ────────────────────────────────────────
+
+export async function getSuperAdminPlatformReport() {
+  const admin = createAdminClient()
+
+  const [
+    { data: hospitals },
+    { data: users },
+    { data: assessments },
+    { data: certificates },
+    { data: subscriptions },
+    { data: invoices },
+    { data: plans },
+    { data: signups },
+  ] = await Promise.all([
+    admin.from(T.hospitals).select('id, name, is_active, subscription_plan, subscription_expires_at, created_at, country, city'),
+    admin.from(T.users).select('id, role, status, hospital_id, created_at'),
+    admin.from(T.assessments).select('id, status, hospital_id, created_at'),
+    admin.from(T.certificates).select('id, status, hospital_id, expiry_date'),
+    admin.from(T.subscriptions).select('id, hospital_id, plan_id, status, start_date, end_date, amount_paid, created_at'),
+    admin.from(T.invoices).select('id, hospital_id, amount, status, issued_at, paid_at'),
+    admin.from(T.plans).select('id, name, price_sar, max_staff, duration_days'),
+    admin.from(T.hospital_signups).select('id, hospital_name, contact_email, status, created_at'),
+  ])
+
+  const h = hospitals ?? []
+  const u = users ?? []
+  const a = assessments ?? []
+  const c = certificates ?? []
+  const inv = invoices ?? []
+  const sub = subscriptions ?? []
+  const p = plans ?? []
+  const sg = signups ?? []
+
+  // Financial summary
+  const totalRevenue = inv.filter((i) => i.status === 'paid').reduce((acc, i) => acc + (i.amount ?? 0), 0)
+  const pendingRevenue = inv.filter((i) => i.status === 'unpaid').reduce((acc, i) => acc + (i.amount ?? 0), 0)
+  const paidInvoices = inv.filter((i) => i.status === 'paid').length
+  const unpaidInvoices = inv.filter((i) => i.status === 'unpaid').length
+
+  // Hospital summary
+  const activeHospitals = h.filter((x) => x.is_active).length
+  const suspendedHospitals = h.filter((x) => !x.is_active).length
+  const now = new Date()
+  const expiredPlans = h.filter((x) => x.subscription_expires_at && new Date(x.subscription_expires_at) < now).length
+  const expiringSoon = h.filter((x) => {
+    if (!x.subscription_expires_at) return false
+    const exp = new Date(x.subscription_expires_at)
+    const days = (exp.getTime() - now.getTime()) / 86400000
+    return days >= 0 && days <= 30
+  }).length
+
+  // User summary
+  const totalUsers = u.length
+  const activeUsers = u.filter((x) => x.status === 'active').length
+  const roleBreakdown = u.reduce<Record<string, number>>((acc, usr) => {
+    acc[usr.role] = (acc[usr.role] ?? 0) + 1
+    return acc
+  }, {})
+
+  // Assessment summary
+  const totalAssessments = a.length
+  const passed = a.filter((x) => x.status === 'passed').length
+  const failed = a.filter((x) => x.status === 'failed').length
+  const platformPassRate = (passed + failed) > 0 ? Math.round((passed / (passed + failed)) * 100) : 0
+
+  // Cert summary
+  const activeCerts = c.filter((x) => x.status === 'active').length
+  const expiredCerts = c.filter((x) => x.status === 'expired').length
+
+  // Per-hospital breakdown
+  const hospitalBreakdown = h.map((hosp) => {
+    const hUsers = u.filter((x) => x.hospital_id === hosp.id)
+    const hAssessments = a.filter((x) => x.hospital_id === hosp.id)
+    const hPassed = hAssessments.filter((x) => x.status === 'passed').length
+    const hFailed = hAssessments.filter((x) => x.status === 'failed').length
+    const hTotal = hPassed + hFailed
+    const hCerts = c.filter((x) => x.hospital_id === hosp.id && x.status === 'active').length
+    const hRevenue = inv
+      .filter((i) => i.hospital_id === hosp.id && i.status === 'paid')
+      .reduce((acc, i) => acc + (i.amount ?? 0), 0)
+    const hSub = sub.find((s) => s.hospital_id === hosp.id && s.status === 'active')
+    const hPlan = hSub ? p.find((pl) => pl.id === hSub.plan_id) : null
+    return {
+      id: hosp.id,
+      name: hosp.name,
+      is_active: hosp.is_active,
+      plan: hPlan?.name ?? hosp.subscription_plan ?? '—',
+      expires: hosp.subscription_expires_at,
+      staff: hUsers.filter((x) => x.status === 'active').length,
+      assessments: hAssessments.length,
+      compliance: hTotal > 0 ? Math.round((hPassed / hTotal) * 100) : 0,
+      activeCerts: hCerts,
+      revenue: hRevenue,
+      city: hosp.city ?? '—',
+    }
+  })
+
+  // Monthly revenue trend (last 6 months)
+  const revenueTrend: { month: string; revenue: number; count: number }[] = []
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date()
+    d.setMonth(d.getMonth() - i)
+    const label = d.toLocaleString('default', { month: 'short', year: '2-digit' })
+    const y = d.getFullYear()
+    const m = d.getMonth()
+    const monthInv = inv.filter((x) => {
+      if (!x.paid_at || x.status !== 'paid') return false
+      const pd = new Date(x.paid_at)
+      return pd.getFullYear() === y && pd.getMonth() === m
+    })
+    revenueTrend.push({ month: label, revenue: monthInv.reduce((acc, i) => acc + (i.amount ?? 0), 0), count: monthInv.length })
+  }
+
+  // Signup pipeline
+  const pendingSignups = sg.filter((x) => x.status === 'pending').length
+  const approvedSignups = sg.filter((x) => x.status === 'approved').length
+
+  return {
+    success: true as const,
+    data: {
+      // Financial
+      totalRevenue,
+      pendingRevenue,
+      paidInvoices,
+      unpaidInvoices,
+      revenueTrend,
+      // Hospitals
+      totalHospitals: h.length,
+      activeHospitals,
+      suspendedHospitals,
+      expiredPlans,
+      expiringSoon,
+      pendingSignups,
+      approvedSignups,
+      // Users
+      totalUsers,
+      activeUsers,
+      roleBreakdown,
+      // Assessments & Certs
+      totalAssessments,
+      passed,
+      failed,
+      platformPassRate,
+      activeCerts,
+      expiredCerts,
+      // Per-hospital table
+      hospitalBreakdown,
+    },
+  }
+}
+
 // ─── Reports ──────────────────────────────────────────────────────────────────
 
 export interface ReportFilters {

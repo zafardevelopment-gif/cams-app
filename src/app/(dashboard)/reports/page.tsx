@@ -17,14 +17,25 @@ export default async function ReportsPage() {
     .eq('id', authUser!.id)
     .single()
 
-  const hospitalId = profile?.hospital_id ?? ''
   const role = profile?.role ?? 'staff'
+  const isSuperAdmin = role === 'super_admin'
 
-  // Load filter options (branches, departments)
-  const [{ data: branches }, { data: departments }, { data: hospital }] = await Promise.all([
-    admin.from(T.branches).select('id, name').eq('hospital_id', hospitalId).eq('is_active', true).order('name'),
-    admin.from(T.departments).select('id, name').eq('hospital_id', hospitalId).eq('is_active', true).order('name'),
-    admin.from(T.hospitals).select('id, name').eq('id', hospitalId).single(),
+  // Super admin starts with no hospital selected; others use their own hospital
+  const hospitalId = isSuperAdmin ? '' : (profile?.hospital_id ?? '')
+
+  const [{ data: branches }, { data: departments }, { data: hospital }, { data: allHospitals }] = await Promise.all([
+    hospitalId
+      ? admin.from(T.branches).select('id, name').eq('hospital_id', hospitalId).eq('is_active', true).order('name')
+      : Promise.resolve({ data: [] }),
+    hospitalId
+      ? admin.from(T.departments).select('id, name').eq('hospital_id', hospitalId).eq('is_active', true).order('name')
+      : Promise.resolve({ data: [] }),
+    hospitalId
+      ? admin.from(T.hospitals).select('id, name').eq('id', hospitalId).single()
+      : Promise.resolve({ data: null }),
+    isSuperAdmin
+      ? admin.from(T.hospitals).select('id, name').eq('is_active', true).order('name')
+      : Promise.resolve({ data: [] }),
   ])
 
   return (
@@ -34,6 +45,7 @@ export default async function ReportsPage() {
       hospitalName={hospital?.name ?? ''}
       branches={branches ?? []}
       departments={departments ?? []}
+      allHospitals={isSuperAdmin ? (allHospitals ?? []) : []}
     />
   )
 }
