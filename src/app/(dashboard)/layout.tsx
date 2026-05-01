@@ -6,6 +6,8 @@ import SubscriptionBanner from '@/components/billing/SubscriptionBanner'
 import { T, J } from '@/lib/db'
 import type { User } from '@/types'
 import { getUnreadCount } from '@/actions/notifications'
+import { getHospitalConfig } from '@/actions/hospitalConfig'
+import type { HospitalConfig } from '@/lib/hospitalConfig'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,6 +47,23 @@ export default async function DashboardLayout({ children }: { children: React.Re
     }
   }
 
+  // Load hospital config and branch count in parallel (hospital_admin only)
+  let hasBranch = true
+  let hospitalConfig: HospitalConfig | null = null
+
+  if (profile.hospital_id && profile.role === 'hospital_admin') {
+    const [{ count }, cfg] = await Promise.all([
+      admin
+        .from(T.branches)
+        .select('id', { count: 'exact', head: true })
+        .eq('hospital_id', profile.hospital_id)
+        .eq('is_active', true),
+      getHospitalConfig(profile.hospital_id),
+    ])
+    hasBranch = !cfg.hasBranches || (count ?? 0) > 0
+    hospitalConfig = cfg
+  }
+
   const unreadCount = await getUnreadCount()
 
   return (
@@ -57,7 +76,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
           role={profile.role}
         />
       )}
-      <DashboardShell user={profile as User} unreadCount={unreadCount}>
+      <DashboardShell
+        user={profile as User}
+        unreadCount={unreadCount}
+        hasBranch={hasBranch}
+        hospitalConfig={hospitalConfig}
+      >
         {children}
       </DashboardShell>
     </>

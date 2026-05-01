@@ -2,6 +2,8 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { T, J } from '@/lib/db'
 import { ProfileForm, PasswordForm } from '@/components/settings/SettingsForm'
+import { HospitalConfigForm } from '@/components/settings/HospitalConfigForm'
+import { getHospitalConfig } from '@/actions/hospitalConfig'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Settings — CAMS' }
@@ -19,6 +21,12 @@ export default async function SettingsPage() {
 
   const hospitalRaw = profile?.hospital as unknown
   const hospital = Array.isArray(hospitalRaw) ? hospitalRaw[0] : hospitalRaw as { name: string; city: string; contact_email: string } | null
+
+  const { data: profileRole } = await admin.from(T.users).select('role, hospital_id').eq('id', authUser!.id).single()
+  const isHospitalAdmin = profileRole?.role === 'hospital_admin'
+  const hospitalConfig = isHospitalAdmin && profileRole?.hospital_id
+    ? await getHospitalConfig(profileRole.hospital_id)
+    : null
 
   const profileFields = [
     { label: 'Full Name', value: profile?.full_name ?? '', name: 'full_name', type: 'text' },
@@ -104,6 +112,23 @@ export default async function SettingsPage() {
               <PasswordForm />
             </div>
           </div>
+
+          {hospitalConfig && (
+            <div className="card" id="hospital-structure">
+              <div className="card-header">
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <span>🏗️</span>
+                  <div>
+                    <div className="card-title">Hospital Structure &amp; Workflow</div>
+                    <div className="card-subtitle">Configure which organisational levels and approval roles apply to your hospital</div>
+                  </div>
+                </div>
+              </div>
+              <div className="card-body" style={{ padding: 0 }}>
+                <HospitalConfigForm config={hospitalConfig} />
+              </div>
+            </div>
+          )}
 
           <div className="card">
             <div className="card-header">

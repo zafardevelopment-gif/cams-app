@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { cloneTemplate, deleteTemplate, publishTemplate } from '@/actions/competencies'
+import { CompetencyZeroState } from '@/components/onboarding/OnboardingComponents'
 
 interface TemplateRow {
   id: string
@@ -282,10 +283,16 @@ export function CompetenciesClient({ templates, departments, canEdit }: Props) {
         )
       })}
 
-      {filtered.length === 0 && (
+      {filtered.length === 0 && templates.length === 0 && (
+        <CompetencyZeroState canEdit={canEdit} />
+      )}
+      {filtered.length === 0 && templates.length > 0 && (
         <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--gray-400)' }}>
-          No competency templates found.{' '}
-          {canEdit && <Link href="/competencies/new" style={{ color: 'var(--blue)' }}>Create the first one →</Link>}
+          No templates match your current filters.{' '}
+          <button style={{ background: 'none', border: 'none', color: 'var(--blue)', cursor: 'pointer', textDecoration: 'underline' }}
+            onClick={() => { setSearch(''); setFilterCategory(''); setFilterDept(''); setFilterTag('') }}>
+            Clear filters
+          </button>
         </div>
       )}
 

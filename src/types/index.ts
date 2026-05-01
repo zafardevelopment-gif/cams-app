@@ -27,6 +27,38 @@ export type TransferStatus = 'pending' | 'approved' | 'rejected' | 'completed'
 export type RenewalStatus = 'upcoming' | 'due' | 'overdue' | 'in_progress' | 'completed'
 export type NotifType = 'info' | 'warning' | 'success' | 'danger'
 
+// ── RBAC ─────────────────────────────────────────────────────────────────────
+
+export type RbacModule = 'staff' | 'departments' | 'units' | 'competencies' | 'assessments' | 'reports' | 'billing' | 'settings'
+export type RbacAction = 'view' | 'create' | 'edit' | 'delete' | 'approve' | 'assign'
+export type RbacScope  = 'hospital' | 'branch' | 'department' | 'unit'
+
+export interface RoleDefinition {
+  id:           string
+  hospital_id:  string | null
+  role_key:     string
+  display_name: string
+  description:  string | null
+  is_system:    boolean
+  is_active:    boolean
+  created_at:   string
+  updated_at:   string
+  permissions?: RolePermission[]
+}
+
+export interface RolePermission {
+  id:                 string
+  role_definition_id: string
+  module:             RbacModule
+  action:             RbacAction
+  scope:              RbacScope
+  granted:            boolean
+  created_at:         string
+}
+
+/** Flat map used in the UI: `${module}.${action}` → true/false */
+export type PermissionMap = Partial<Record<`${RbacModule}.${RbacAction}`, boolean>>
+
 export interface Hospital {
   id: string
   name: string
@@ -441,6 +473,9 @@ export interface Plan {
   features: string[]
   is_active: boolean
   sort_order: number
+  duration_days: number
+  trial_days: number
+  description?: string
   created_at: string
 }
 

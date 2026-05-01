@@ -5,6 +5,7 @@ import { usePathname } from 'next/navigation'
 import { logout } from '@/actions/auth'
 import { getInitials, getRoleIcon, getRoleLabel } from '@/lib/utils'
 import type { User } from '@/types'
+import type { HospitalConfig } from '@/lib/hospitalConfig'
 
 interface NavItem {
   href: string
@@ -86,6 +87,7 @@ function getNavConfig(role: string): NavSection[] {
           items: [
             { href: '/reports', icon: '📈', label: 'Reports' },
             { href: '/billing', icon: '💳', label: 'Billing' },
+            { href: '/hospital-admin/roles', icon: '🔐', label: 'Roles & Permissions' },
             { href: '/settings', icon: '⚙️', label: 'Settings' },
             ...common.items,
           ],
@@ -293,15 +295,33 @@ function getNavConfig(role: string): NavSection[] {
   }
 }
 
+// Routes locked until first branch is created (hospital_admin only)
+const BRANCH_GATED_ROUTES = [
+  '/hospital/departments',
+  '/hospital/units',
+  '/staff-directory',
+  '/competencies',
+]
+
+// Routes hidden when a structure feature is disabled
+const ROUTE_FEATURE_MAP: Record<string, keyof Pick<HospitalConfig, 'hasBranches' | 'hasDepartments' | 'hasUnits'>> = {
+  '/hospital/branches':    'hasBranches',
+  '/hospital/departments': 'hasDepartments',
+  '/hospital/units':       'hasUnits',
+}
+
 interface SidebarProps {
   user: User
   isOpen?: boolean
   onClose?: () => void
+  hasBranch?: boolean
+  hospitalConfig?: HospitalConfig | null
 }
 
-export function Sidebar({ user, isOpen, onClose }: SidebarProps) {
+export function Sidebar({ user, isOpen, onClose, hasBranch = true, hospitalConfig }: SidebarProps) {
   const pathname = usePathname()
   const navSections = getNavConfig(user.role)
+  const showGate = !hasBranch && user.role === 'hospital_admin'
 
   return (
     <>
@@ -337,7 +357,28 @@ export function Sidebar({ user, isOpen, onClose }: SidebarProps) {
                 <div className="nav-section-label">{section.label}</div>
               )}
               {section.items.map((item) => {
+                // Hide items whose feature is disabled in hospital config
+                if (hospitalConfig) {
+                  const featureKey = ROUTE_FEATURE_MAP[item.href]
+                  if (featureKey && !hospitalConfig[featureKey]) return null
+                }
+
                 const isActive = pathname === item.href || pathname.startsWith(item.href + '/')
+                const isLocked = showGate && BRANCH_GATED_ROUTES.some((r) => item.href.startsWith(r))
+                if (isLocked) {
+                  return (
+                    <div
+                      key={item.href}
+                      className="nav-item"
+                      title="Create a branch first to unlock this section"
+                      style={{ opacity: 0.4, cursor: 'not-allowed', pointerEvents: 'none' }}
+                    >
+                      <span className="nav-icon">{item.icon}</span>
+                      <span className="nav-label">{item.label}</span>
+                      <span style={{ fontSize: 11, marginLeft: 'auto', opacity: 0.7 }}>🔒</span>
+                    </div>
+                  )
+                }
                 return (
                   <Link
                     key={item.href}

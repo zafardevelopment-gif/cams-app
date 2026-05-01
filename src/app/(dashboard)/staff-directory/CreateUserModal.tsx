@@ -5,21 +5,26 @@ import { toast } from 'sonner'
 import { createUser } from '@/actions/staff'
 import { getRoleLabel } from '@/lib/utils'
 
-const ROLES = ['staff','assessor','educator','head_nurse','unit_head','department_head','hr_quality','branch_admin','hospital_admin','auditor'] as const
+interface RoleOption {
+  role_key: string
+  display_name: string
+  is_system: boolean
+}
 
 interface Props {
   departments: { id: string; name: string }[]
   branches: { id: string; name: string }[]
+  roleOptions?: RoleOption[]
   onClose: () => void
 }
 
 const EMPTY = {
-  full_name: '', email: '', password: '', role: 'staff', job_title: '', phone: '',
+  full_name: '', email: '', password: '', role: '', job_title: '', phone: '',
   employee_id: '', nursing_license: '', license_expiry: '', hired_date: '',
   department_id: '', branch_id: '', unit_id: '',
 }
 
-export function CreateUserModal({ departments, branches, onClose }: Props) {
+export function CreateUserModal({ departments, branches, roleOptions = [], onClose }: Props) {
   const [form, setForm] = useState(EMPTY)
   const [isPending, startTransition] = useTransition()
   const set = (k: keyof typeof EMPTY) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -68,7 +73,27 @@ export function CreateUserModal({ departments, branches, onClose }: Props) {
               <div className="form-group">
                 <label className="form-label">Role *</label>
                 <select className="form-control" value={form.role} onChange={set('role')} required>
-                  {ROLES.map((r) => <option key={r} value={r}>{getRoleLabel(r)}</option>)}
+                  <option value="" disabled>— Select a role —</option>
+                  {roleOptions.length > 0 ? (
+                    <>
+                      <optgroup label="System Roles">
+                        {roleOptions.filter((r) => r.is_system).map((r) => (
+                          <option key={r.role_key} value={r.role_key}>{r.display_name}</option>
+                        ))}
+                      </optgroup>
+                      {roleOptions.some((r) => !r.is_system) && (
+                        <optgroup label="Custom Roles">
+                          {roleOptions.filter((r) => !r.is_system).map((r) => (
+                            <option key={r.role_key} value={r.role_key}>{r.display_name}</option>
+                          ))}
+                        </optgroup>
+                      )}
+                    </>
+                  ) : (
+                    ['staff','assessor','educator','head_nurse','unit_head','department_head','hr_quality','branch_admin','hospital_admin','auditor'].map((r) => (
+                      <option key={r} value={r}>{getRoleLabel(r)}</option>
+                    ))
+                  )}
                 </select>
               </div>
             </div>

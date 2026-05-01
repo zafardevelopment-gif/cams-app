@@ -48,6 +48,23 @@ export function getRoleLabel(role: string) {
   return labels[role] ?? role
 }
 
+export function getRoleBadgeColor(role: string): string {
+  const map: Record<string, string> = {
+    super_admin:     '#7C3AED', // violet
+    hospital_admin:  '#1565C0', // dark blue
+    branch_admin:    '#0288D1', // light blue
+    department_head: '#2E7D32', // green
+    unit_head:       '#388E3C', // lighter green
+    head_nurse:      '#AD1457', // pink
+    educator:        '#F57F17', // amber
+    hr_quality:      '#6A1B9A', // purple
+    assessor:        '#00838F', // teal
+    staff:           '#546E7A', // blue-gray
+    auditor:         '#4E342E', // brown
+  }
+  return map[role] ?? '#546E7A'
+}
+
 export function getRoleIcon(role: string) {
   const icons: Record<string, string> = {
     super_admin:     '👑',

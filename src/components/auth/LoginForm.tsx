@@ -163,12 +163,30 @@ export function LoginForm({ serverError, serverMessage }: { serverError?: string
             🏢 Sign in with Hospital SSO
           </button>
 
-          <p style={{ textAlign: 'center', marginBottom: 16 }}>
+          <p style={{ textAlign: 'center', marginBottom: 10 }}>
             <span style={{ fontSize: 13, color: 'var(--gray-500)' }}>Don&apos;t have an account? </span>
             <Link href="/register" style={{ fontSize: 13, color: 'var(--blue)', fontWeight: 600, textDecoration: 'none' }}>
               Request Access
             </Link>
           </p>
+
+          <div style={{ textAlign: 'center', marginBottom: 16 }}>
+            <Link
+              href="/signup"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                fontSize: 13, fontWeight: 600, textDecoration: 'none',
+                color: 'white',
+                background: 'linear-gradient(135deg,#2E7D32,#388E3C)',
+                padding: '8px 18px', borderRadius: 8,
+              }}
+            >
+              🏥 Register Your Hospital
+            </Link>
+            <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 5 }}>
+              New hospital? Start your free trial
+            </div>
+          </div>
 
           <p style={{ textAlign: 'center', fontSize: 12, color: 'var(--gray-400)', marginTop: 8 }}>
             CAMS · Clinical Competency Assessment System

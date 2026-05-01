@@ -3,7 +3,11 @@ import { createClient } from '@/lib/supabase/server'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { T, J } from '@/lib/db'
 import { getHospitalAdminDashboardData } from '@/actions/reports'
+import { getHospitalConfig } from '@/actions/hospitalConfig'
+import { computeSetupStep } from '@/lib/hospitalConfig'
 import HospitalAdminCharts from './HospitalAdminCharts'
+import { HospitalOnboardingBanner } from './HospitalOnboardingBanner'
+import { SetupProgressCard } from './SetupProgressCard'
 
 export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Hospital Admin Dashboard — CAMS' }
@@ -25,7 +29,7 @@ export default async function HospitalAdminPage() {
   const { data: profile } = await admin.from(T.users).select('hospital_id').eq('id', authUser!.id).single()
   const hospitalId = profile?.hospital_id ?? ''
 
-  const [{ data: recentAssessments }, { data: pendingRegs }, dashData] = await Promise.all([
+  const [{ data: recentAssessments }, { data: pendingRegs }, dashData, { data: branches }, { data: departments }, { data: units }, { data: competencies }, hospitalConfig] = await Promise.all([
     admin.from(T.assessments)
       .select(`id, status, created_at, staff:${J.users}!staff_id(full_name, job_title), template:${J.competency_templates}!template_id(title)`)
       .eq('hospital_id', hospitalId)
@@ -38,7 +42,26 @@ export default async function HospitalAdminPage() {
       .order('created_at', { ascending: false })
       .limit(5),
     getHospitalAdminDashboardData(hospitalId),
+    admin.from(T.branches).select('id', { count: 'exact', head: true }).eq('hospital_id', hospitalId),
+    admin.from(T.departments).select('id', { count: 'exact', head: true }).eq('hospital_id', hospitalId),
+    admin.from(T.units).select('id', { count: 'exact', head: true }).eq('hospital_id', hospitalId),
+    admin.from(T.competency_templates).select('id', { count: 'exact', head: true }).eq('hospital_id', hospitalId),
+    getHospitalConfig(hospitalId),
   ])
+
+  const branchCount = (branches as unknown as { count?: number } | null)?.count ?? 0
+  const deptCount   = (departments as unknown as { count?: number } | null)?.count ?? 0
+  const unitCount   = (units as unknown as { count?: number } | null)?.count ?? 0
+  const compCount   = (competencies as unknown as { count?: number } | null)?.count ?? 0
+
+  const finalSetupStep = computeSetupStep(hospitalConfig, {
+    branchCount,
+    deptCount,
+    unitCount,
+    staffCount:     dashData.totalStaff,
+    compCount,
+    assessmentCount: dashData.activeAssessments,
+  })
 
   return (
     <>
@@ -52,6 +75,10 @@ export default async function HospitalAdminPage() {
           <Link href="/competencies" className="btn btn-primary btn-sm">＋ New Competency</Link>
         </div>
       </div>
+
+      <HospitalOnboardingBanner setupStep={finalSetupStep} totalStaff={dashData.totalStaff} config={hospitalConfig} />
+
+      <SetupProgressCard config={hospitalConfig} setupStep={finalSetupStep} />
 
       <div className="kpi-grid" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
         {[
@@ -181,6 +208,7 @@ export default async function HospitalAdminPage() {
           { href: '/competencies', icon: '📚', title: 'Competency Templates' },
           { href: '/transfers', icon: '🔄', title: 'Staff Transfers' },
           { href: '/reports', icon: '📈', title: 'Reports' },
+          { href: '/hospital-admin/roles', icon: '🔐', title: 'Roles & Permissions' },
           { href: '/settings', icon: '⚙️', title: 'Hospital Settings' },
         ].map((item) => (
           <Link key={item.href} href={item.href} style={{ textDecoration: 'none' }}>

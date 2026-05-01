@@ -265,13 +265,15 @@ export const UnitSchema = z.object({
   head_user_id: z.string().uuid().optional().or(z.literal('')),
 })
 
-// ── Departments (update — branch assignment) ────────────────
-export const UpdateDepartmentSchema = z.object({
+// ── Departments ─────────────────────────────────────────────
+export const DepartmentSchema = z.object({
   name: z.string().min(2, 'Department name is required').max(150).trim(),
   name_ar: z.string().max(150).trim().optional().or(z.literal('')),
   branch_id: z.string().uuid().optional().or(z.literal('')),
   head_nurse_id: z.string().uuid().optional().or(z.literal('')),
 })
+
+export const UpdateDepartmentSchema = DepartmentSchema
 
 // ── Billing ─────────────────────────────────────────────────
 
@@ -336,6 +338,61 @@ export const UpdateInvoiceSchema = z.object({
 
 export const ValidateCouponSchema = z.object({
   code:    z.string().min(1).max(50).trim(),
-  plan_id: z.enum(['trial', 'basic', 'pro', 'enterprise']),
+  plan_id: z.string().min(1),
+})
+
+export const CreatePlanSchema = z.object({
+  id:              z.string().min(2).max(40).regex(/^[a-z0-9_]+$/, 'Lowercase letters, numbers, underscores only').trim(),
+  name:            z.string().min(2).max(100).trim(),
+  name_ar:         z.string().max(100).trim().optional().or(z.literal('')),
+  description:     z.string().max(500).trim().optional().or(z.literal('')),
+  price_monthly:   z.coerce.number().min(0),
+  price_yearly:    z.coerce.number().min(0),
+  max_users:       z.coerce.number().int().min(1).max(999999),
+  max_branches:    z.coerce.number().int().min(1).max(9999),
+  max_departments: z.coerce.number().int().min(1).max(9999),
+  duration_days:   z.coerce.number().int().min(1).max(3650),
+  trial_days:      z.coerce.number().int().min(0).max(365).default(0),
+  sort_order:      z.coerce.number().int().min(0).default(0),
+  features:        z.string().optional(),  // JSON string array, parsed server-side
+})
+
+export const UpdatePlanSchema = z.object({
+  name:            z.string().min(2).max(100).trim().optional(),
+  name_ar:         z.string().max(100).trim().optional().or(z.literal('')),
+  description:     z.string().max(500).trim().optional().or(z.literal('')),
+  price_monthly:   z.coerce.number().min(0).optional(),
+  price_yearly:    z.coerce.number().min(0).optional(),
+  max_users:       z.coerce.number().int().min(1).optional(),
+  max_branches:    z.coerce.number().int().min(1).optional(),
+  max_departments: z.coerce.number().int().min(1).optional(),
+  duration_days:   z.coerce.number().int().min(1).optional(),
+  trial_days:      z.coerce.number().int().min(0).optional(),
+  sort_order:      z.coerce.number().int().min(0).optional(),
+  features:        z.string().optional(),
+  is_active:       z.coerce.boolean().optional(),
+})
+
+// Helper: accepts string | null | undefined, trims, treats null/undefined/'' as undefined
+const optStr = (max: number) =>
+  z.union([z.string().max(max).trim(), z.null(), z.undefined()]).transform((v) => v ?? '')
+
+export const CompleteSignupSchema = z.object({
+  hospital_name:    z.string().min(2).max(200).trim(),
+  hospital_name_ar: optStr(200),
+  city:             optStr(100),
+  region:           optStr(100),
+  license_number:   optStr(80),
+  contact_name:     z.string().min(2).max(120).trim(),
+  contact_email:    z.string().email().max(254),
+  contact_phone:    optStr(30),
+  admin_password:   z.string().min(8, 'Password must be at least 8 characters').max(128),
+  plan_id:          z.string().min(1),
+  billing_cycle:    z.enum(['monthly', 'yearly']).default('monthly'),
+  coupon_code:      optStr(50),
+  message:          optStr(1000),
+  terms_accepted:   z.union([z.boolean(), z.string(), z.null(), z.undefined()])
+    .transform((v) => v === true || v === 'true')
+    .refine((v) => v === true, 'You must accept the terms'),
 })
 

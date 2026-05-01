@@ -25,6 +25,8 @@ export const T = {
   subscriptions:          'CAMS_subscriptions',
   invoices:               'CAMS_invoices',
   hospital_signups:       'CAMS_hospital_signups',
+  role_definitions:       'CAMS_role_definitions',
+  role_permissions:       'CAMS_role_permissions',
 } as const
 
 // Alias — same values, used in .select() join strings for clarity

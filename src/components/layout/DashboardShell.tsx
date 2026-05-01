@@ -4,15 +4,18 @@ import { useState } from 'react'
 import { Sidebar } from './Sidebar'
 import { TopNav } from './TopNav'
 import type { User } from '@/types'
+import type { HospitalConfig } from '@/lib/hospitalConfig'
 
 interface DashboardShellProps {
   user: User
   children: React.ReactNode
   breadcrumb?: { label: string; href?: string }[]
   unreadCount?: number
+  hasBranch?: boolean
+  hospitalConfig?: HospitalConfig | null
 }
 
-export function DashboardShell({ user, children, breadcrumb, unreadCount = 0 }: DashboardShellProps) {
+export function DashboardShell({ user, children, breadcrumb, unreadCount = 0, hasBranch = true, hospitalConfig }: DashboardShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   return (
@@ -21,6 +24,8 @@ export function DashboardShell({ user, children, breadcrumb, unreadCount = 0 }: 
         user={user}
         isOpen={sidebarOpen}
         onClose={() => setSidebarOpen(false)}
+        hasBranch={hasBranch}
+        hospitalConfig={hospitalConfig}
       />
       <div className="main-wrapper">
         <TopNav

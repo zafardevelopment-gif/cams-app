@@ -4,10 +4,10 @@ import { useState, useTransition } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { editUser, archiveUser, restoreUser, adminResetPassword, requestTransfer } from '@/actions/staff'
-import { getRoleLabel, getInitials, getAvatarColor } from '@/lib/utils'
+import { getRoleLabel, getInitials, getAvatarColor, getRoleBadgeColor } from '@/lib/utils'
 import type { ProfileHistory, UserRole } from '@/types'
 
-const ROLES = ['staff','assessor','educator','head_nurse','unit_head','department_head','hr_quality','branch_admin','hospital_admin','auditor'] as const
+const FALLBACK_ROLES = ['staff','assessor','educator','head_nurse','unit_head','department_head','hr_quality','branch_admin','hospital_admin','auditor'] as const
 const STATUS_BADGE: Record<string, string> = { active: 'badge-green', pending: 'badge-yellow', inactive: 'badge-gray', suspended: 'badge-red' }
 const CERT_BADGE:   Record<string, string> = { active: 'badge-green', expiring_soon: 'badge-amber', expired: 'badge-red', revoked: 'badge-gray' }
 const ASSESS_BADGE: Record<string, string> = { passed: 'badge-green', failed: 'badge-red', in_progress: 'badge-blue', submitted: 'badge-purple', assessor_review: 'badge-blue', head_nurse_review: 'badge-teal', admin_review: 'badge-navy', not_started: 'badge-gray' }
@@ -22,6 +22,12 @@ function idOf(raw: unknown) {
   return obj?.id ?? ''
 }
 
+interface RoleOption {
+  role_key: string
+  display_name: string
+  is_system: boolean
+}
+
 interface Props {
   staff: Record<string, unknown>
   history: ProfileHistory[]
@@ -30,9 +36,11 @@ interface Props {
   departments: { id: string; name: string }[]
   branches: { id: string; name: string }[]
   canManage: boolean
+  roleOptions?: RoleOption[]
+  callerId?: string
 }
 
-export function StaffProfileClient({ staff, history, assessments, certs, departments, branches, canManage }: Props) {
+export function StaffProfileClient({ staff, history, assessments, certs, departments, branches, canManage, roleOptions = [], callerId }: Props) {
   const [tab, setTab] = useState<'profile' | 'history' | 'assessments' | 'certs' | 'transfer'>('profile')
   const [editing, setEditing] = useState(false)
   const [isPending, startTransition] = useTransition()
@@ -64,7 +72,14 @@ export function StaffProfileClient({ staff, history, assessments, certs, departm
   const setT = (k: keyof typeof tForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setTForm((f) => ({ ...f, [k]: e.target.value }))
 
+  const isSelf = callerId === s.id
+
   function handleSave() {
+    // Prevent self-demotion of hospital_admin
+    if (isSelf && s.role === 'hospital_admin' && form.role !== 'hospital_admin') {
+      toast.error('You cannot remove your own hospital_admin role')
+      return
+    }
     const fd = new FormData()
     Object.entries(form).forEach(([k, v]) => fd.set(k, String(v)))
     startTransition(async () => {
@@ -133,8 +148,13 @@ export function StaffProfileClient({ staff, history, assessments, certs, departm
           <div style={{ flex: 1 }}>
             <div style={{ fontWeight: 700, fontSize: 20, color: 'var(--navy)' }}>{s.full_name}</div>
             <div style={{ fontSize: 14, color: 'var(--gray-500)' }}>{s.email}</div>
-            <div style={{ marginTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <span className="badge badge-blue">{getRoleLabel(s.role)}</span>
+            <div style={{ marginTop: 6, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+              <span style={{
+                display: 'inline-block', padding: '3px 12px', borderRadius: 20, fontSize: 12,
+                fontWeight: 700, color: 'white', background: getRoleBadgeColor(s.role),
+              }}>
+                {getRoleLabel(s.role)}
+              </span>
               <span className={`badge ${STATUS_BADGE[s.status] ?? 'badge-gray'}`}>{s.status}</span>
               {!!s.department && <span className="badge badge-teal">{nameOf(s.department)}</span>}
               {!!s.branch && nameOf(s.branch) !== '—' && <span className="badge badge-purple">{nameOf(s.branch)}</span>}
@@ -215,12 +235,49 @@ export function StaffProfileClient({ staff, history, assessments, certs, departm
               ))}
               <div className="form-group">
                 <label className="form-label">Role</label>
-                {editing
-                  ? <select className="form-control" value={form.role} onChange={set('role')}>
-                      {ROLES.map((r) => <option key={r} value={r}>{getRoleLabel(r)}</option>)}
+                {editing ? (
+                  <div>
+                    <select
+                      className="form-control"
+                      value={form.role}
+                      onChange={set('role')}
+                      disabled={isSelf && s.role === 'hospital_admin'}
+                    >
+                      {roleOptions.length > 0 ? (
+                        <>
+                          <optgroup label="System Roles">
+                            {roleOptions.filter((r) => r.is_system).map((r) => (
+                              <option key={r.role_key} value={r.role_key}>{r.display_name}</option>
+                            ))}
+                          </optgroup>
+                          {roleOptions.some((r) => !r.is_system) && (
+                            <optgroup label="Custom Roles">
+                              {roleOptions.filter((r) => !r.is_system).map((r) => (
+                                <option key={r.role_key} value={r.role_key}>{r.display_name}</option>
+                              ))}
+                            </optgroup>
+                          )}
+                        </>
+                      ) : (
+                        FALLBACK_ROLES.map((r) => <option key={r} value={r}>{getRoleLabel(r)}</option>)
+                      )}
                     </select>
-                  : <div style={{ padding: '8px 0', fontSize: 14 }}>{getRoleLabel(form.role)}</div>
-                }
+                    {isSelf && s.role === 'hospital_admin' && (
+                      <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4 }}>
+                        You cannot change your own admin role.
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div style={{ padding: '8px 0', display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span style={{
+                      display: 'inline-block', padding: '2px 12px', borderRadius: 20, fontSize: 12,
+                      fontWeight: 700, color: 'white', background: getRoleBadgeColor(form.role),
+                    }}>
+                      {getRoleLabel(form.role)}
+                    </span>
+                  </div>
+                )}
               </div>
               <div className="form-group">
                 <label className="form-label">Department</label>

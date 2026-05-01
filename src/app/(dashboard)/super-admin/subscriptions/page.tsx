@@ -6,6 +6,7 @@ import {
   getCoupons,
   getInvoices,
   getPlans,
+  getAllPlans,
 } from '@/actions/billing'
 import SubscriptionsClient from './SubscriptionsClient'
 
@@ -13,13 +14,14 @@ export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Subscriptions — CAMS' }
 
 export default async function SubscriptionsPage() {
-  const [dashData, subscriptions, signups, coupons, invoices, plans] = await Promise.all([
+  const [dashData, subscriptions, signups, coupons, invoices, plans, allPlans] = await Promise.all([
     getBillingDashboardData(),
     getSubscriptions(),
     getHospitalSignups(),
     getCoupons(),
     getInvoices(),
     getPlans(),
+    getAllPlans(),
   ])
 
   return (
@@ -59,6 +61,7 @@ export default async function SubscriptionsPage() {
         coupons={coupons}
         invoices={invoices}
         plans={plans}
+        allPlans={allPlans}
       />
     </>
   )

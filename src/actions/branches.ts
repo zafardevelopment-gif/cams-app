@@ -4,7 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { createAdminClient } from '@/lib/supabase/admin'
 import { createClient } from '@/lib/supabase/server'
 import { T } from '@/lib/db'
-import { BranchSchema, UnitSchema, UpdateDepartmentSchema } from '@/lib/validations'
+import { BranchSchema, UnitSchema, DepartmentSchema, UpdateDepartmentSchema } from '@/lib/validations'
 import type { ActionResult } from '@/types'
 
 // ── helpers ─────────────────────────────────────────────────────────────────
@@ -276,6 +276,81 @@ export async function toggleUnitStatus(id: string, isActive: boolean): Promise<A
 }
 
 // ── DEPARTMENTS (assign to branch) ───────────────────────────────────────────
+
+// ── DEPARTMENTS ───────────────────────────────────────────────────────────────
+
+export async function createDepartment(formData: FormData): Promise<ActionResult<{ id: string }>> {
+  const ctx = await getAdminCaller()
+  if (!ctx) return { success: false, error: 'Unauthorized' }
+
+  const raw = {
+    name:          formData.get('name'),
+    name_ar:       formData.get('name_ar'),
+    branch_id:     formData.get('branch_id'),
+    head_nurse_id: formData.get('head_nurse_id'),
+  }
+
+  const parsed = DepartmentSchema.safeParse(raw)
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' }
+
+  const hospitalId = ctx.caller.hospital_id
+  if (!hospitalId) return { success: false, error: 'Hospital is required' }
+
+  const { data, error } = await ctx.admin.from(T.departments).insert({
+    hospital_id:   hospitalId,
+    name:          parsed.data.name,
+    name_ar:       parsed.data.name_ar || null,
+    branch_id:     parsed.data.branch_id || null,
+    head_nurse_id: parsed.data.head_nurse_id || null,
+  }).select('id').single()
+
+  if (error) return { success: false, error: error.message }
+
+  await ctx.admin.from(T.activity_logs).insert({
+    user_id:     ctx.authUser.id,
+    action:      'create_department',
+    entity_type: 'department',
+    entity_id:   data.id,
+    description: `Created department "${parsed.data.name}"`,
+  })
+
+  revalidatePath('/hospital/departments')
+  return { success: true, data: { id: data.id } }
+}
+
+export async function deleteDepartment(id: string): Promise<ActionResult> {
+  const ctx = await getAdminCaller()
+  if (!ctx) return { success: false, error: 'Unauthorized' }
+
+  const { data: existing } = await ctx.admin
+    .from(T.departments)
+    .select('hospital_id, name')
+    .eq('id', id)
+    .single()
+
+  if (!existing) return { success: false, error: 'Department not found' }
+  if (ctx.caller.role === 'hospital_admin' && existing.hospital_id !== ctx.caller.hospital_id) {
+    return { success: false, error: 'Cannot delete departments from a different hospital' }
+  }
+
+  const { error } = await ctx.admin
+    .from(T.departments)
+    .update({ is_active: false })
+    .eq('id', id)
+
+  if (error) return { success: false, error: error.message }
+
+  await ctx.admin.from(T.activity_logs).insert({
+    user_id:     ctx.authUser.id,
+    action:      'delete_department',
+    entity_type: 'department',
+    entity_id:   id,
+    description: `Deactivated department "${existing.name}"`,
+  })
+
+  revalidatePath('/hospital/departments')
+  return { success: true }
+}
 
 export async function updateDepartment(id: string, formData: FormData): Promise<ActionResult> {
   const ctx = await getAdminCaller()

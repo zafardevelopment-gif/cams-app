@@ -3,11 +3,15 @@
 import { useState, useMemo, useTransition, useRef } from 'react'
 import Link from 'next/link'
 import { toast } from 'sonner'
-import { getInitials, getAvatarColor, getRoleLabel } from '@/lib/utils'
+import { getInitials, getAvatarColor, getRoleLabel, getRoleBadgeColor } from '@/lib/utils'
 import { archiveUser, restoreUser, createUser, adminResetPassword } from '@/actions/staff'
+import { assignUserRole } from '@/actions/roles'
 import { BulkImportModal } from './BulkImportModal'
 import { CreateUserModal } from './CreateUserModal'
 import type { UserRole } from '@/types'
+
+// Feature flag — set to true when multi-role DB support is ready
+const enableMultiRole = false
 
 interface StaffRow {
   id: string; full_name: string; email: string; job_title?: string | null
@@ -26,6 +30,7 @@ interface Props {
   canManage: boolean
   expiringCount: number
   expiredCount: number
+  roleOptions?: { role_key: string; display_name: string; is_system: boolean }[]
 }
 
 const PAGE_SIZE = 25
@@ -48,7 +53,7 @@ function nameOf(raw: unknown): string {
 }
 
 export function StaffDirectoryClient({
-  staff: allStaff, departments, branches, callerRole, callerHospitalId, canManage, expiringCount, expiredCount,
+  staff: allStaff, departments, branches, callerRole, callerHospitalId, canManage, expiringCount, expiredCount, roleOptions = [],
 }: Props) {
   const [search, setSearch] = useState('')
   const [filterRole, setFilterRole] = useState('')
@@ -64,6 +69,9 @@ export function StaffDirectoryClient({
   const [archiveReason, setArchiveReason] = useState('')
   const [resetTarget, setResetTarget] = useState<StaffRow | null>(null)
   const [newPassword, setNewPassword] = useState('')
+  const [assignTarget, setAssignTarget] = useState<StaffRow | null>(null)
+  const [assignRole, setAssignRole] = useState('')
+  const [assignMultiRoles, setAssignMultiRoles] = useState<string[]>([])
 
   const filtered = useMemo(() => {
     const q = search.toLowerCase()
@@ -121,6 +129,32 @@ export function StaffDirectoryClient({
       if (r.success) { toast.success('Password reset'); setResetTarget(null); setNewPassword('') }
       else toast.error(r.error ?? 'Failed')
     })
+  }
+
+  function handleAssignRole() {
+    if (!assignTarget) return
+    const roleKey = enableMultiRole
+      ? assignMultiRoles[0] ?? ''  // multi-role: use first selected for now
+      : assignRole
+    if (!roleKey) { toast.error('Select a role'); return }
+    if (roleKey === assignTarget.role && !enableMultiRole) { toast.error('Role unchanged'); return }
+    startTransition(async () => {
+      const r = await assignUserRole(assignTarget.id, roleKey)
+      if (r.success) {
+        toast.success(`Role updated to ${getRoleLabel(roleKey)}`)
+        setAssignTarget(null)
+        setAssignRole('')
+        setAssignMultiRoles([])
+      } else {
+        toast.error(r.error ?? 'Failed')
+      }
+    })
+  }
+
+  function openAssign(s: StaffRow) {
+    setAssignTarget(s)
+    setAssignRole(s.role)
+    setAssignMultiRoles([s.role])
   }
 
   const activeCount   = allStaff.filter((s) => s.status === 'active').length
@@ -242,7 +276,15 @@ export function StaffDirectoryClient({
                           </div>
                         </div>
                       </td>
-                      <td><span className="badge badge-blue">{getRoleLabel(s.role)}</span></td>
+                      <td>
+                        <span style={{
+                          display: 'inline-block', padding: '2px 10px', borderRadius: 20, fontSize: 11,
+                          fontWeight: 600, color: 'white', background: getRoleBadgeColor(s.role),
+                          whiteSpace: 'nowrap',
+                        }}>
+                          {getRoleLabel(s.role)}
+                        </span>
+                      </td>
                       <td className="text-sm">
                         <div>{nameOf(s.department)}</div>
                         {!!s.branch && nameOf(s.branch) !== '—' && (
@@ -259,8 +301,18 @@ export function StaffDirectoryClient({
                       <td><span className={`badge ${STATUS_BADGE[s.status] ?? 'badge-gray'}`}>{s.status}</span></td>
                       <td className="text-sm text-muted">{new Date(s.created_at).toLocaleDateString()}</td>
                       <td>
-                        <div style={{ display: 'flex', gap: 4 }}>
+                        <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                           <Link href={`/staff-directory/${s.id}`} className="btn btn-secondary btn-sm">View</Link>
+                          {canManage && s.status !== 'inactive' && (
+                            <button
+                              className="btn btn-sm"
+                              style={{ background: '#EDE7F6', color: '#6A1B9A', border: 'none', fontWeight: 600 }}
+                              onClick={() => openAssign(s)}
+                              title="Assign Role"
+                            >
+                              🎭 Role
+                            </button>
+                          )}
                           {canManage && s.status !== 'inactive' && (
                             <button className="btn btn-danger btn-sm" onClick={() => { setArchiveTarget(s); setArchiveReason('') }} disabled={isPending}>
                               Archive
@@ -281,8 +333,32 @@ export function StaffDirectoryClient({
                     </tr>
                   )
                 })}
-                {pageSlice.length === 0 && (
-                  <tr><td colSpan={8} style={{ textAlign: 'center', padding: 32, color: 'var(--gray-400)' }}>No staff found</td></tr>
+                {pageSlice.length === 0 && allStaff.length > 0 && (
+                  <tr><td colSpan={8} style={{ textAlign: 'center', padding: 32, color: 'var(--gray-400)' }}>
+                    No staff match your filters.{' '}
+                    <button style={{ background: 'none', border: 'none', color: 'var(--blue)', cursor: 'pointer', textDecoration: 'underline' }}
+                      onClick={() => { setSearch(''); setFilterRole(''); setFilterStatus(''); setFilterDept(''); setFilterBranch('') }}>
+                      Clear filters
+                    </button>
+                  </td></tr>
+                )}
+                {pageSlice.length === 0 && allStaff.length === 0 && (
+                  <tr><td colSpan={8}>
+                    <div style={{ textAlign: 'center', padding: '40px 24px' }}>
+                      <div style={{ fontSize: 40, marginBottom: 10 }}>👥</div>
+                      <div style={{ fontWeight: 600, color: 'var(--navy)', marginBottom: 6 }}>No staff added yet</div>
+                      <div style={{ color: 'var(--gray-400)', fontSize: '0.85rem', marginBottom: 16 }}>
+                        Add staff manually, bulk import from a CSV file, or ask staff to self-register.
+                      </div>
+                      {canManage && (
+                        <div style={{ display: 'flex', gap: 10, justifyContent: 'center', flexWrap: 'wrap' }}>
+                          <button className="btn btn-primary btn-sm" onClick={() => setShowCreate(true)}>＋ Add First Staff Member</button>
+                          <button className="btn btn-secondary btn-sm" onClick={() => setShowBulk(true)}>📥 Bulk Import CSV</button>
+                          <a href="/hospital-admin/pending-registrations" className="btn btn-secondary btn-sm">📋 Pending Registrations</a>
+                        </div>
+                      )}
+                    </div>
+                  </td></tr>
                 )}
               </tbody>
             </table>
@@ -356,10 +432,155 @@ export function StaffDirectoryClient({
         </div>
       )}
 
+      {/* Quick Assign Role modal */}
+      {assignTarget && (
+        <div className="modal-backdrop">
+          <div className="modal" style={{ maxWidth: 420 }}>
+            <div className="modal-header">
+              <h3>Assign Role</h3>
+              <button className="modal-close" onClick={() => setAssignTarget(null)}>✕</button>
+            </div>
+            <div className="modal-body">
+              {/* Current role display */}
+              <div style={{ marginBottom: 16, padding: '10px 14px', background: 'var(--gray-50)', borderRadius: 8, display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div>
+                  <div style={{ fontSize: 11, color: 'var(--gray-500)', marginBottom: 3 }}>Current role</div>
+                  <span style={{
+                    display: 'inline-block', padding: '2px 12px', borderRadius: 20, fontSize: 12,
+                    fontWeight: 700, color: 'white', background: getRoleBadgeColor(assignTarget.role),
+                  }}>
+                    {getRoleLabel(assignTarget.role)}
+                  </span>
+                </div>
+                <div style={{ marginLeft: 'auto', fontSize: 13, color: 'var(--gray-600)', fontWeight: 600 }}>
+                  {assignTarget.full_name}
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">{enableMultiRole ? 'Select Roles' : 'New Role *'}</label>
+
+                {enableMultiRole ? (
+                  /* Multi-role: checkbox list */
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, maxHeight: 240, overflowY: 'auto', border: '1px solid var(--gray-200)', borderRadius: 8, padding: 10 }}>
+                    {roleOptions.length > 0 ? (
+                      <>
+                        {roleOptions.filter((r) => r.is_system).length > 0 && (
+                          <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--gray-400)', padding: '4px 0 2px' }}>System Roles</div>
+                        )}
+                        {roleOptions.filter((r) => r.is_system).map((r) => (
+                          <label key={r.role_key} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
+                            <input
+                              type="checkbox"
+                              checked={assignMultiRoles.includes(r.role_key)}
+                              onChange={(e) => setAssignMultiRoles((prev) =>
+                                e.target.checked ? [...prev, r.role_key] : prev.filter((k) => k !== r.role_key)
+                              )}
+                            />
+                            <span style={{ width: 10, height: 10, borderRadius: '50%', background: getRoleBadgeColor(r.role_key), flexShrink: 0 }} />
+                            {r.display_name}
+                          </label>
+                        ))}
+                        {roleOptions.filter((r) => !r.is_system).length > 0 && (
+                          <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', color: 'var(--gray-400)', padding: '8px 0 2px', borderTop: '1px solid var(--gray-100)', marginTop: 4 }}>Custom Roles</div>
+                        )}
+                        {roleOptions.filter((r) => !r.is_system).map((r) => (
+                          <label key={r.role_key} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
+                            <input
+                              type="checkbox"
+                              checked={assignMultiRoles.includes(r.role_key)}
+                              onChange={(e) => setAssignMultiRoles((prev) =>
+                                e.target.checked ? [...prev, r.role_key] : prev.filter((k) => k !== r.role_key)
+                              )}
+                            />
+                            <span style={{ width: 10, height: 10, borderRadius: '50%', background: getRoleBadgeColor(r.role_key), flexShrink: 0 }} />
+                            {r.display_name}
+                          </label>
+                        ))}
+                      </>
+                    ) : (
+                      ['staff','assessor','educator','head_nurse','unit_head','department_head','hr_quality','branch_admin','hospital_admin','auditor'].map((r) => (
+                        <label key={r} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', fontSize: 13 }}>
+                          <input
+                            type="checkbox"
+                            checked={assignMultiRoles.includes(r)}
+                            onChange={(e) => setAssignMultiRoles((prev) =>
+                              e.target.checked ? [...prev, r] : prev.filter((k) => k !== r)
+                            )}
+                          />
+                          <span style={{ width: 10, height: 10, borderRadius: '50%', background: getRoleBadgeColor(r), flexShrink: 0 }} />
+                          {getRoleLabel(r)}
+                        </label>
+                      ))
+                    )}
+                  </div>
+                ) : (
+                  /* Single role: grouped dropdown */
+                  <select
+                    className="form-control"
+                    value={assignRole}
+                    onChange={(e) => setAssignRole(e.target.value)}
+                    required
+                  >
+                    <option value="" disabled>— Select a role —</option>
+                    {roleOptions.length > 0 ? (
+                      <>
+                        <optgroup label="System Roles">
+                          {roleOptions.filter((r) => r.is_system).map((r) => (
+                            <option key={r.role_key} value={r.role_key}>{r.display_name}</option>
+                          ))}
+                        </optgroup>
+                        {roleOptions.some((r) => !r.is_system) && (
+                          <optgroup label="Custom Roles">
+                            {roleOptions.filter((r) => !r.is_system).map((r) => (
+                              <option key={r.role_key} value={r.role_key}>{r.display_name}</option>
+                            ))}
+                          </optgroup>
+                        )}
+                      </>
+                    ) : (
+                      ['staff','assessor','educator','head_nurse','unit_head','department_head','hr_quality','branch_admin','hospital_admin','auditor'].map((r) => (
+                        <option key={r} value={r}>{getRoleLabel(r)}</option>
+                      ))
+                    )}
+                  </select>
+                )}
+              </div>
+
+              {/* Preview new role badge */}
+              {(enableMultiRole ? assignMultiRoles.length > 0 : assignRole) && (
+                <div style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 8 }}>
+                  Will be assigned:{' '}
+                  {(enableMultiRole ? assignMultiRoles : [assignRole]).map((r) => (
+                    <span key={r} style={{
+                      display: 'inline-block', marginRight: 6, padding: '1px 8px', borderRadius: 20,
+                      fontSize: 11, fontWeight: 600, color: 'white', background: getRoleBadgeColor(r),
+                    }}>
+                      {getRoleLabel(r)}
+                    </span>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="modal-footer">
+              <button className="btn btn-secondary" onClick={() => setAssignTarget(null)}>Cancel</button>
+              <button
+                className="btn btn-primary"
+                onClick={handleAssignRole}
+                disabled={isPending || (enableMultiRole ? assignMultiRoles.length === 0 : !assignRole)}
+              >
+                {isPending ? 'Saving…' : 'Save Role'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showCreate && (
         <CreateUserModal
           departments={departments}
           branches={branches}
+          roleOptions={roleOptions}
           onClose={() => setShowCreate(false)}
         />
       )}

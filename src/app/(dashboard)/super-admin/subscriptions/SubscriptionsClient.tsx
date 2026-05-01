@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import React, { useState, useTransition } from 'react'
 import { toast } from 'sonner'
 import {
   approveHospitalSignup,
@@ -10,6 +10,9 @@ import {
   toggleCoupon,
   createInvoice,
   markInvoicePaid,
+  createPlan,
+  updatePlan,
+  deletePlan,
 } from '@/actions/billing'
 import { MonthlyLine } from '@/components/charts/Charts'
 
@@ -19,6 +22,7 @@ type Signup = Awaited<ReturnType<typeof import('@/actions/billing').getHospitalS
 type Coupon = Awaited<ReturnType<typeof import('@/actions/billing').getCoupons>>[number]
 type Invoice = Awaited<ReturnType<typeof import('@/actions/billing').getInvoices>>[number]
 type Plan = Awaited<ReturnType<typeof import('@/actions/billing').getPlans>>[number]
+type AllPlan = Awaited<ReturnType<typeof import('@/actions/billing').getAllPlans>>[number]
 
 const STATUS_BADGE: Record<string, string> = {
   trial: 'badge-blue', active: 'badge-green', past_due: 'badge-yellow',
@@ -28,7 +32,7 @@ const STATUS_BADGE: Record<string, string> = {
 }
 
 export default function SubscriptionsClient({
-  dashData, subscriptions, signups, coupons, invoices, plans,
+  dashData, subscriptions, signups, coupons, invoices, plans, allPlans,
 }: {
   dashData: DashData
   subscriptions: Subscription[]
@@ -36,8 +40,9 @@ export default function SubscriptionsClient({
   coupons: Coupon[]
   invoices: Invoice[]
   plans: Plan[]
+  allPlans: AllPlan[]
 }) {
-  const [tab, setTab] = useState<'overview' | 'subscriptions' | 'signups' | 'invoices' | 'coupons'>('overview')
+  const [tab, setTab] = useState<'overview' | 'subscriptions' | 'signups' | 'invoices' | 'coupons' | 'plans'>('overview')
   const [isPending, startTransition] = useTransition()
   const [editingSubId, setEditingSubId] = useState<string | null>(null)
   const [rejectId, setRejectId] = useState<string | null>(null)
@@ -45,6 +50,10 @@ export default function SubscriptionsClient({
   const [showCouponForm, setShowCouponForm] = useState(false)
   const [showInvoiceForm, setShowInvoiceForm] = useState(false)
   const [payRefMap, setPayRefMap] = useState<Record<string, string>>({})
+  const [showPlanForm, setShowPlanForm] = useState(false)
+  const [editingPlanId, setEditingPlanId] = useState<string | null>(null)
+  const [planEditData, setPlanEditData] = useState<Partial<AllPlan>>({})
+  const [deleteConfirmPlanId, setDeleteConfirmPlanId] = useState<string | null>(null)
 
   const tabs = [
     { id: 'overview', label: 'Overview', icon: '📊' },
@@ -52,6 +61,7 @@ export default function SubscriptionsClient({
     { id: 'signups', label: `Signups (${signups.filter((s) => s.status === 'pending').length} pending)`, icon: '📝' },
     { id: 'invoices', label: `Invoices (${invoices.length})`, icon: '🧾' },
     { id: 'coupons', label: `Coupons (${coupons.length})`, icon: '🎟️' },
+    { id: 'plans', label: `Plans (${allPlans.length})`, icon: '📦' },
   ] as const
 
   function action(fn: () => Promise<void>) {
@@ -550,12 +560,274 @@ export default function SubscriptionsClient({
     </div>
   )
 
+  // ── Plans ─────────────────────────────────────────────────────────────────
+
+  const plansTab = (
+    <div>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+        <button className="btn btn-primary btn-sm" onClick={() => { setShowPlanForm(!showPlanForm); setEditingPlanId(null) }}>
+          {showPlanForm ? '✕ Cancel' : '＋ New Plan'}
+        </button>
+      </div>
+
+      {showPlanForm && (
+        <div className="card" style={{ marginBottom: 16 }}>
+          <div className="card-header"><div className="card-title">Create Plan</div></div>
+          <div className="card-body">
+            <form action={async (fd) => {
+              action(async () => {
+                const r = await createPlan(fd)
+                if (r.success) { toast.success('Plan created'); setShowPlanForm(false) }
+                else toast.error(r.error ?? 'Failed')
+              })
+            }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: 12 }}>
+                <div>
+                  <label className="form-label">Plan ID (slug) *</label>
+                  <input name="id" required className="form-input" placeholder="e.g. premium" pattern="[a-z0-9_-]+" />
+                </div>
+                <div>
+                  <label className="form-label">Name *</label>
+                  <input name="name" required className="form-input" placeholder="e.g. Premium" />
+                </div>
+                <div>
+                  <label className="form-label">Name (Arabic)</label>
+                  <input name="name_ar" className="form-input" placeholder="بريميوم" dir="rtl" />
+                </div>
+                <div>
+                  <label className="form-label">Monthly Price (SAR) *</label>
+                  <input name="price_monthly" type="number" required min="0" step="0.01" className="form-input" placeholder="0.00" />
+                </div>
+                <div>
+                  <label className="form-label">Yearly Price (SAR) *</label>
+                  <input name="price_yearly" type="number" required min="0" step="0.01" className="form-input" placeholder="0.00" />
+                </div>
+                <div>
+                  <label className="form-label">Max Users *</label>
+                  <input name="max_users" type="number" required min="1" className="form-input" placeholder="100" />
+                </div>
+                <div>
+                  <label className="form-label">Max Branches *</label>
+                  <input name="max_branches" type="number" required min="1" className="form-input" placeholder="5" />
+                </div>
+                <div>
+                  <label className="form-label">Max Departments *</label>
+                  <input name="max_departments" type="number" required min="1" className="form-input" placeholder="20" />
+                </div>
+                <div>
+                  <label className="form-label">Duration (days) *</label>
+                  <input name="duration_days" type="number" required min="1" className="form-input" defaultValue="30" />
+                </div>
+                <div>
+                  <label className="form-label">Trial Days</label>
+                  <input name="trial_days" type="number" min="0" className="form-input" defaultValue="0" />
+                </div>
+                <div>
+                  <label className="form-label">Sort Order</label>
+                  <input name="sort_order" type="number" min="0" className="form-input" defaultValue="10" />
+                </div>
+                <div style={{ gridColumn: '1/-1' }}>
+                  <label className="form-label">Description</label>
+                  <input name="description" className="form-input" placeholder="Short plan description" />
+                </div>
+                <div style={{ gridColumn: '1/-1' }}>
+                  <label className="form-label">Features (one per line)</label>
+                  <textarea name="features" rows={4} className="form-input" placeholder="Up to 100 staff&#10;Multi-branch support&#10;Priority support" style={{ resize: 'vertical' }} />
+                </div>
+              </div>
+              <button type="submit" className="btn btn-primary btn-sm" style={{ marginTop: 12 }} disabled={isPending}>
+                Create Plan
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      <div className="card">
+        <div className="card-body p-0">
+          <div className="table-wrap">
+            <table>
+              <thead>
+                <tr><th>ID</th><th>Name</th><th>Monthly</th><th>Yearly</th><th>Max Users</th><th>Duration</th><th>Trial</th><th>Status</th><th>Actions</th></tr>
+              </thead>
+              <tbody>
+                {allPlans.map((p) => (
+                  <React.Fragment key={p.id}>
+                    <tr>
+                      <td style={{ fontFamily: 'monospace', fontSize: 12, color: 'var(--gray-500)' }}>{p.id}</td>
+                      <td style={{ fontWeight: 600 }}>
+                        {p.name}
+                        {p.name_ar && <div className="text-xs text-muted" dir="rtl">{p.name_ar}</div>}
+                      </td>
+                      <td>SAR {Number(p.price_monthly).toFixed(2)}</td>
+                      <td>SAR {Number(p.price_yearly).toFixed(2)}</td>
+                      <td>{p.max_users.toLocaleString()}</td>
+                      <td className="text-sm">{p.duration_days ?? 30}d</td>
+                      <td className="text-sm">{p.trial_days ?? 0}d</td>
+                      <td>
+                        <span className={`badge ${p.is_active ? 'badge-green' : 'badge-gray'}`}>
+                          {p.is_active ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td>
+                        <div style={{ display: 'flex', gap: 4 }}>
+                          <button
+                            className="btn btn-secondary btn-sm"
+                            onClick={() => {
+                              if (editingPlanId === p.id) { setEditingPlanId(null) }
+                              else { setEditingPlanId(p.id); setPlanEditData(p); setShowPlanForm(false) }
+                            }}
+                          >
+                            {editingPlanId === p.id ? '✕' : 'Edit'}
+                          </button>
+                          <button
+                            className="btn btn-sm"
+                            style={{ background: p.is_active ? '#FFEBEE' : '#E8F5E9', color: p.is_active ? '#C62828' : '#2E7D32', border: 'none' }}
+                            disabled={isPending}
+                            onClick={() => action(async () => {
+                              const fd = new FormData()
+                              fd.set('is_active', String(!p.is_active))
+                              const r = await updatePlan(p.id, fd)
+                              r.success ? toast.success(`Plan ${p.is_active ? 'deactivated' : 'activated'}`) : toast.error(r.error ?? 'Failed')
+                            })}
+                          >
+                            {p.is_active ? 'Deactivate' : 'Activate'}
+                          </button>
+                          <button
+                            className="btn btn-danger btn-sm"
+                            onClick={() => setDeleteConfirmPlanId(p.id)}
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {editingPlanId === p.id && (
+                      <tr key={`${p.id}-edit`}>
+                        <td colSpan={9} style={{ padding: 0 }}>
+                          <div style={{ background: '#F8FAFF', borderTop: '2px solid var(--blue)', padding: 16 }}>
+                            <form action={async (fd) => {
+                              action(async () => {
+                                const r = await updatePlan(p.id, fd)
+                                if (r.success) { toast.success('Plan updated'); setEditingPlanId(null) }
+                                else toast.error(r.error ?? 'Failed')
+                              })
+                            }}>
+                              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: 10 }}>
+                                <div>
+                                  <label className="form-label">Name</label>
+                                  <input name="name" className="form-input" defaultValue={planEditData.name ?? p.name} />
+                                </div>
+                                <div>
+                                  <label className="form-label">Name (Arabic)</label>
+                                  <input name="name_ar" className="form-input" defaultValue={planEditData.name_ar ?? p.name_ar ?? ''} dir="rtl" />
+                                </div>
+                                <div>
+                                  <label className="form-label">Monthly Price</label>
+                                  <input name="price_monthly" type="number" min="0" step="0.01" className="form-input" defaultValue={Number(p.price_monthly)} />
+                                </div>
+                                <div>
+                                  <label className="form-label">Yearly Price</label>
+                                  <input name="price_yearly" type="number" min="0" step="0.01" className="form-input" defaultValue={Number(p.price_yearly)} />
+                                </div>
+                                <div>
+                                  <label className="form-label">Max Users</label>
+                                  <input name="max_users" type="number" min="1" className="form-input" defaultValue={p.max_users} />
+                                </div>
+                                <div>
+                                  <label className="form-label">Max Branches</label>
+                                  <input name="max_branches" type="number" min="1" className="form-input" defaultValue={p.max_branches} />
+                                </div>
+                                <div>
+                                  <label className="form-label">Max Departments</label>
+                                  <input name="max_departments" type="number" min="1" className="form-input" defaultValue={p.max_departments} />
+                                </div>
+                                <div>
+                                  <label className="form-label">Duration (days)</label>
+                                  <input name="duration_days" type="number" min="1" className="form-input" defaultValue={p.duration_days ?? 30} />
+                                </div>
+                                <div>
+                                  <label className="form-label">Trial Days</label>
+                                  <input name="trial_days" type="number" min="0" className="form-input" defaultValue={p.trial_days ?? 0} />
+                                </div>
+                                <div>
+                                  <label className="form-label">Sort Order</label>
+                                  <input name="sort_order" type="number" min="0" className="form-input" defaultValue={p.sort_order} />
+                                </div>
+                                <div style={{ gridColumn: '1/-1' }}>
+                                  <label className="form-label">Description</label>
+                                  <input name="description" className="form-input" defaultValue={p.description ?? ''} />
+                                </div>
+                                <div style={{ gridColumn: '1/-1' }}>
+                                  <label className="form-label">Features (one per line)</label>
+                                  <textarea
+                                    name="features"
+                                    rows={4}
+                                    className="form-input"
+                                    defaultValue={Array.isArray(p.features) ? (p.features as string[]).join('\n') : ''}
+                                    style={{ resize: 'vertical' }}
+                                  />
+                                </div>
+                              </div>
+                              <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+                                <button type="submit" className="btn btn-primary btn-sm" disabled={isPending}>Save Changes</button>
+                                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setEditingPlanId(null)}>Cancel</button>
+                              </div>
+                            </form>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
+                ))}
+                {allPlans.length === 0 && (
+                  <tr><td colSpan={9} style={{ textAlign: 'center', color: 'var(--gray-400)', padding: 24 }}>No plans yet</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* Delete confirm modal */}
+      {deleteConfirmPlanId && (() => {
+        const plan = allPlans.find((p) => p.id === deleteConfirmPlanId)
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ background: 'white', borderRadius: 14, padding: 28, width: 400 }}>
+              <h3 style={{ marginBottom: 10, color: '#C62828' }}>Delete Plan?</h3>
+              <p style={{ fontSize: 14, color: 'var(--gray-600)', marginBottom: 20 }}>
+                Are you sure you want to delete <strong>{plan?.name}</strong>? This cannot be undone.
+                Hospitals with active subscriptions on this plan will block deletion.
+              </p>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button
+                  className="btn btn-danger"
+                  disabled={isPending}
+                  onClick={() => action(async () => {
+                    const r = await deletePlan(deleteConfirmPlanId)
+                    if (r.success) { toast.success('Plan deleted'); setDeleteConfirmPlanId(null) }
+                    else toast.error(r.error ?? 'Cannot delete plan')
+                  })}
+                >
+                  Delete
+                </button>
+                <button className="btn btn-secondary" onClick={() => setDeleteConfirmPlanId(null)}>Cancel</button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+    </div>
+  )
+
   const tabContent: Record<string, React.ReactNode> = {
     overview: overviewTab,
     subscriptions: subsTab,
     signups: signupsTab,
     invoices: invoicesTab,
     coupons: couponsTab,
+    plans: plansTab,
   }
 
   return (

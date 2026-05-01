@@ -12,6 +12,9 @@ import {
   CreateInvoiceSchema,
   UpdateInvoiceSchema,
   ValidateCouponSchema,
+  CreatePlanSchema,
+  UpdatePlanSchema,
+  CompleteSignupSchema,
 } from '@/lib/validations'
 
 // ─── Public: Hospital self-signup ─────────────────────────────────────────────
@@ -323,7 +326,7 @@ export async function toggleCoupon(couponId: string, isActive: boolean): Promise
 
 export async function validateCoupon(code: string, planId: string): Promise<ActionResult<{ discount_type: string; discount_value: number; description?: string }>> {
   const parsed = ValidateCouponSchema.safeParse({ code, plan_id: planId })
-  if (!parsed.success) return { success: false, error: 'Invalid input' }
+  if (!parsed.success) return { success: false, error: 'Invalid coupon code' }
 
   const admin = createAdminClient()
   const { data: coupon } = await admin
@@ -332,10 +335,12 @@ export async function validateCoupon(code: string, planId: string): Promise<Acti
     .eq('code', code.toUpperCase())
     .single()
 
-  if (!coupon || !coupon.is_active) return { success: false, error: 'Invalid or inactive coupon' }
-  if (coupon.max_uses && coupon.used_count >= coupon.max_uses) return { success: false, error: 'Coupon usage limit reached' }
-  if (coupon.valid_until && new Date(coupon.valid_until) < new Date()) return { success: false, error: 'Coupon has expired' }
-  if (coupon.applies_to_plan && coupon.applies_to_plan !== planId) return { success: false, error: `Coupon only applies to the ${coupon.applies_to_plan} plan` }
+  if (!coupon || !coupon.is_active) return { success: false, error: 'Invalid or inactive coupon code' }
+  if (coupon.max_uses && coupon.used_count >= coupon.max_uses) return { success: false, error: 'This coupon has reached its usage limit' }
+  if (coupon.valid_until && new Date(coupon.valid_until) < new Date()) return { success: false, error: 'This coupon has expired' }
+  if (coupon.applies_to_plan && coupon.applies_to_plan !== planId) {
+    return { success: false, error: `This coupon only applies to the ${coupon.applies_to_plan} plan` }
+  }
 
   return { success: true, data: { discount_type: coupon.discount_type, discount_value: coupon.discount_value, description: coupon.description ?? undefined } }
 }
@@ -540,4 +545,324 @@ export async function getInvoices(hospitalId?: string) {
   if (hospitalId) q = q.eq('hospital_id', hospitalId)
   const { data } = await q
   return data ?? []
+}
+
+export async function getAllPlans() {
+  const admin = createAdminClient()
+  const { data } = await admin.from(T.plans).select('*').order('sort_order')
+  return data ?? []
+}
+
+// ─── Plan CRUD (Super Admin) ──────────────────────────────────────────────────
+
+async function getSuperAdminCaller() {
+  const supabase = await createClient()
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return null
+  const admin = createAdminClient()
+  const { data: profile } = await admin.from(T.users).select('role').eq('id', user.id).single()
+  if (profile?.role !== 'super_admin') return null
+  return { userId: user.id, admin }
+}
+
+export async function createPlan(formData: FormData): Promise<ActionResult<{ id: string }>> {
+  const ctx = await getSuperAdminCaller()
+  if (!ctx) return { success: false, error: 'Unauthorized' }
+
+  const raw = {
+    id:              formData.get('id'),
+    name:            formData.get('name'),
+    name_ar:         formData.get('name_ar'),
+    description:     formData.get('description'),
+    price_monthly:   formData.get('price_monthly'),
+    price_yearly:    formData.get('price_yearly'),
+    max_users:       formData.get('max_users'),
+    max_branches:    formData.get('max_branches'),
+    max_departments: formData.get('max_departments'),
+    duration_days:   formData.get('duration_days'),
+    trial_days:      formData.get('trial_days'),
+    sort_order:      formData.get('sort_order'),
+    features:        formData.get('features'),
+  }
+  const parsed = CreatePlanSchema.safeParse(raw)
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' }
+
+  // Parse features JSON string
+  let features: string[] = []
+  if (parsed.data.features) {
+    try { features = JSON.parse(parsed.data.features) } catch { features = parsed.data.features.split('\n').map((f) => f.trim()).filter(Boolean) }
+  }
+
+  const { data: existing } = await ctx.admin.from(T.plans).select('id').eq('id', parsed.data.id).single()
+  if (existing) return { success: false, error: 'A plan with this ID already exists' }
+
+  const { data, error } = await ctx.admin.from(T.plans).insert({
+    id:              parsed.data.id,
+    name:            parsed.data.name,
+    name_ar:         parsed.data.name_ar || null,
+    description:     parsed.data.description || null,
+    price_monthly:   parsed.data.price_monthly,
+    price_yearly:    parsed.data.price_yearly,
+    max_users:       parsed.data.max_users,
+    max_branches:    parsed.data.max_branches,
+    max_departments: parsed.data.max_departments,
+    duration_days:   parsed.data.duration_days,
+    trial_days:      parsed.data.trial_days,
+    sort_order:      parsed.data.sort_order,
+    features,
+    is_active:       true,
+  }).select('id').single()
+
+  if (error) return { success: false, error: 'Failed to create plan: ' + error.message }
+  return { success: true, data: { id: data.id } }
+}
+
+export async function updatePlan(planId: string, formData: FormData): Promise<ActionResult> {
+  const ctx = await getSuperAdminCaller()
+  if (!ctx) return { success: false, error: 'Unauthorized' }
+
+  const raw = {
+    name:            formData.get('name'),
+    name_ar:         formData.get('name_ar'),
+    description:     formData.get('description'),
+    price_monthly:   formData.get('price_monthly'),
+    price_yearly:    formData.get('price_yearly'),
+    max_users:       formData.get('max_users'),
+    max_branches:    formData.get('max_branches'),
+    max_departments: formData.get('max_departments'),
+    duration_days:   formData.get('duration_days'),
+    trial_days:      formData.get('trial_days'),
+    sort_order:      formData.get('sort_order'),
+    features:        formData.get('features'),
+    is_active:       formData.get('is_active'),
+  }
+  const parsed = UpdatePlanSchema.safeParse(raw)
+  if (!parsed.success) return { success: false, error: parsed.error.issues[0]?.message ?? 'Invalid input' }
+
+  const updates: Record<string, unknown> = {}
+  if (parsed.data.name !== undefined)            updates.name            = parsed.data.name
+  if (parsed.data.name_ar !== undefined)         updates.name_ar         = parsed.data.name_ar || null
+  if (parsed.data.description !== undefined)     updates.description     = parsed.data.description || null
+  if (parsed.data.price_monthly !== undefined)   updates.price_monthly   = parsed.data.price_monthly
+  if (parsed.data.price_yearly !== undefined)    updates.price_yearly    = parsed.data.price_yearly
+  if (parsed.data.max_users !== undefined)       updates.max_users       = parsed.data.max_users
+  if (parsed.data.max_branches !== undefined)    updates.max_branches    = parsed.data.max_branches
+  if (parsed.data.max_departments !== undefined) updates.max_departments = parsed.data.max_departments
+  if (parsed.data.duration_days !== undefined)   updates.duration_days   = parsed.data.duration_days
+  if (parsed.data.trial_days !== undefined)      updates.trial_days      = parsed.data.trial_days
+  if (parsed.data.sort_order !== undefined)      updates.sort_order      = parsed.data.sort_order
+  if (parsed.data.is_active !== undefined)       updates.is_active       = parsed.data.is_active
+  if (parsed.data.features) {
+    try { updates.features = JSON.parse(parsed.data.features) }
+    catch { updates.features = parsed.data.features.split('\n').map((f: string) => f.trim()).filter(Boolean) }
+  }
+
+  const { error } = await ctx.admin.from(T.plans).update(updates).eq('id', planId)
+  if (error) return { success: false, error: 'Failed to update plan' }
+  return { success: true }
+}
+
+export async function deletePlan(planId: string): Promise<ActionResult> {
+  const ctx = await getSuperAdminCaller()
+  if (!ctx) return { success: false, error: 'Unauthorized' }
+
+  // Prevent deleting plans that have active subscriptions
+  const { count } = await ctx.admin.from(T.subscriptions).select('id', { count: 'exact', head: true }).eq('plan_id', planId).neq('status', 'cancelled')
+  if ((count ?? 0) > 0) return { success: false, error: 'Cannot delete a plan with active subscriptions. Deactivate it instead.' }
+
+  const { error } = await ctx.admin.from(T.plans).delete().eq('id', planId)
+  if (error) return { success: false, error: 'Failed to delete plan' }
+  return { success: true }
+}
+
+// ─── Self-service signup: complete payment + provision hospital ───────────────
+
+/** Called after mock payment success. Creates hospital, admin user, subscription, invoice. */
+export async function completeHospitalSignup(formData: FormData): Promise<ActionResult<{ transactionId: string; hospitalId: string }>> {
+  const raw = {
+    hospital_name:    formData.get('hospital_name'),
+    hospital_name_ar: formData.get('hospital_name_ar'),
+    city:             formData.get('city'),
+    region:           formData.get('region'),
+    license_number:   formData.get('license_number'),
+    contact_name:     formData.get('contact_name'),
+    contact_email:    formData.get('contact_email'),
+    contact_phone:    formData.get('contact_phone'),
+    admin_password:   formData.get('admin_password'),
+    plan_id:          formData.get('plan_id'),
+    billing_cycle:    formData.get('billing_cycle'),
+    coupon_code:      formData.get('coupon_code'),
+    message:          formData.get('message'),
+    terms_accepted:   formData.get('terms_accepted'),
+  }
+
+  const parsed = CompleteSignupSchema.safeParse(raw)
+  if (!parsed.success) {
+    const issue = parsed.error.issues[0]
+    return { success: false, error: `${issue?.path?.join('.') ?? 'field'}: ${issue?.message ?? 'Invalid input'}` }
+  }
+
+  const admin = createAdminClient()
+
+  // Check duplicate email via CAMS_users table (faster than listing all auth users)
+  const { data: existingProfile } = await admin.from(T.users).select('id').eq('email', parsed.data.contact_email).maybeSingle()
+  if (existingProfile) return { success: false, error: 'An account with this email already exists. Please sign in instead.' }
+
+  // Load plan
+  const { data: plan } = await admin.from(T.plans).select('*').eq('id', parsed.data.plan_id).eq('is_active', true).single()
+  if (!plan) return { success: false, error: 'Selected plan is not available' }
+
+  // Validate & apply coupon
+  let couponId: string | null = null
+  let discountAmount = 0
+  const basePrice = parsed.data.billing_cycle === 'yearly' ? Number(plan.price_yearly) : Number(plan.price_monthly)
+
+  if (parsed.data.coupon_code) {
+    const { data: coupon } = await admin
+      .from(T.coupons)
+      .select('id, discount_type, discount_value, max_uses, used_count, valid_until, applies_to_plan, is_active')
+      .eq('code', parsed.data.coupon_code.toUpperCase())
+      .single()
+
+    if (!coupon || !coupon.is_active) return { success: false, error: 'Invalid or expired coupon code' }
+    if (coupon.max_uses && coupon.used_count >= coupon.max_uses) return { success: false, error: 'Coupon has reached its usage limit' }
+    if (coupon.valid_until && new Date(coupon.valid_until) < new Date()) return { success: false, error: 'Coupon has expired' }
+    if (coupon.applies_to_plan && coupon.applies_to_plan !== parsed.data.plan_id) {
+      return { success: false, error: `This coupon only applies to the ${coupon.applies_to_plan} plan` }
+    }
+
+    couponId = coupon.id
+    if (coupon.discount_type === 'percent') {
+      discountAmount = Math.round(basePrice * coupon.discount_value / 100 * 100) / 100
+    } else {
+      discountAmount = Math.min(coupon.discount_value, basePrice)
+    }
+  }
+
+  const finalAmount = Math.max(0, basePrice - discountAmount)
+
+  // 1. Create Supabase Auth user
+  const { data: authData, error: authErr } = await admin.auth.admin.createUser({
+    email:             parsed.data.contact_email,
+    password:          parsed.data.admin_password,
+    email_confirm:     true,
+    user_metadata:     { full_name: parsed.data.contact_name, role: 'hospital_admin' },
+  })
+  if (authErr || !authData.user) return { success: false, error: authErr?.message ?? 'Failed to create admin account' }
+
+  const authUserId = authData.user.id
+
+  // 2. Create hospital
+  const { data: hospital, error: hErr } = await admin.from(T.hospitals).insert({
+    name:              parsed.data.hospital_name,
+    name_ar:           parsed.data.hospital_name_ar || null,
+    city:              parsed.data.city || null,
+    region:            parsed.data.region || null,
+    license_number:    parsed.data.license_number || null,
+    contact_email:     parsed.data.contact_email,
+    contact_phone:     parsed.data.contact_phone || null,
+    subscription_plan: parsed.data.plan_id,
+    max_users:         plan.max_users,
+    is_active:         true,
+    cbahi_accredited:  false,
+    primary_color:     '#1565C0',
+  }).select('id').single()
+
+  if (hErr || !hospital) {
+    // Rollback: delete auth user
+    await admin.auth.admin.deleteUser(authUserId)
+    return { success: false, error: 'Failed to create hospital account' }
+  }
+
+  // 3. Create user profile record
+  await admin.from(T.users).insert({
+    id:          authUserId,
+    hospital_id: hospital.id,
+    full_name:   parsed.data.contact_name,
+    email:       parsed.data.contact_email,
+    phone:       parsed.data.contact_phone || null,
+    role:        'hospital_admin',
+    status:      'active',
+  })
+
+  // 4. Calculate subscription period
+  const durationDays = plan.duration_days ?? 30
+  const periodEnd = new Date()
+  periodEnd.setDate(periodEnd.getDate() + durationDays)
+
+  const subStatus: SubscriptionStatus = plan.price_monthly === 0 ? 'trial' : 'active'
+
+  // Generate mock transaction ID
+  const transactionId = `CAMS-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`
+
+  // 5. Create subscription
+  const { data: sub } = await admin.from(T.subscriptions).insert({
+    hospital_id:          hospital.id,
+    plan_id:              parsed.data.plan_id,
+    status:               subStatus,
+    billing_cycle:        parsed.data.billing_cycle,
+    trial_ends_at:        subStatus === 'trial' ? periodEnd.toISOString() : null,
+    current_period_start: new Date().toISOString(),
+    current_period_end:   periodEnd.toISOString(),
+    coupon_id:            couponId,
+    gateway:              'mock',
+    gateway_sub_id:       transactionId,
+    notes:                `Self-service signup. Mock payment. Tx: ${transactionId}`,
+  }).select('id').single()
+
+  // 6. Increment coupon usage
+  if (couponId) {
+    const { data: c } = await admin.from(T.coupons).select('used_count').eq('id', couponId).single()
+    if (c) await admin.from(T.coupons).update({ used_count: c.used_count + 1 }).eq('id', couponId)
+  }
+
+  // 7. Create invoice (only for paid plans)
+  if (finalAmount > 0 && sub) {
+    const { data: numData } = await admin.rpc('cams_next_invoice_number')
+    const invoiceNumber = (numData as string) ?? `INV-${Date.now()}`
+    const tax = Math.round(finalAmount * 0.15 * 100) / 100  // 15% VAT
+    await admin.from(T.invoices).insert({
+      invoice_number:  invoiceNumber,
+      hospital_id:     hospital.id,
+      subscription_id: sub.id,
+      plan_id:         parsed.data.plan_id,
+      amount:          finalAmount,
+      tax,
+      total:           finalAmount + tax,
+      status:          'paid',
+      payment_method:  'mock',
+      payment_ref:     transactionId,
+      paid_at:         new Date().toISOString(),
+      period_start:    new Date().toISOString(),
+      period_end:      periodEnd.toISOString(),
+      notes:           'Mock payment — self-service signup',
+    })
+  }
+
+  // 8. Record signup for audit trail (non-critical — ignore insert errors)
+  await admin.from(T.hospital_signups).insert({
+    hospital_name:    parsed.data.hospital_name,
+    hospital_name_ar: parsed.data.hospital_name_ar || null,
+    city:             parsed.data.city || null,
+    region:           parsed.data.region || null,
+    license_number:   parsed.data.license_number || null,
+    contact_name:     parsed.data.contact_name,
+    contact_email:    parsed.data.contact_email,
+    contact_phone:    parsed.data.contact_phone || null,
+    plan_id:          parsed.data.plan_id,
+    coupon_code:      parsed.data.coupon_code?.toUpperCase() || null,
+    message:          parsed.data.message || null,
+    status:           'approved',
+    hospital_id:      hospital.id,
+    reviewed_at:      new Date().toISOString(),
+    payment_ref:      transactionId,
+    payment_status:   'paid',
+    final_amount:     finalAmount,
+    discount_amount:  discountAmount,
+    billing_cycle:    parsed.data.billing_cycle,
+    terms_accepted:   true,
+    terms_accepted_at: new Date().toISOString(),
+  })
+
+  return { success: true, data: { transactionId, hospitalId: hospital.id } }
 }
