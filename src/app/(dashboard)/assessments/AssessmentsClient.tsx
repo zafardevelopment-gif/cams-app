@@ -184,7 +184,7 @@ export function AssessmentsClient({ assessments, callerRole, isStaff, callerId }
                         {a.reattempt_of && <span style={{ fontSize: 10, color: 'var(--gray-400)', marginLeft: 4 }}>re</span>}
                       </td>
                       <td className="text-sm" style={{ color: isOverdue ? 'var(--red)' : 'var(--gray-500)' }}>
-                        {a.due_date ? new Date(a.due_date).toLocaleDateString() : '—'}
+                        {a.due_date ? new Date(a.due_date).toLocaleDateString('en-CA') : '—'}
                         {isOverdue && <span style={{ fontSize: 10, marginLeft: 4 }}>⚠</span>}
                       </td>
                       <td>

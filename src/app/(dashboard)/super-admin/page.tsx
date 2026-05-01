@@ -26,6 +26,7 @@ export default async function SuperAdminPage() {
           <p>All hospitals · Live data</p>
         </div>
         <div className="page-header-actions">
+          <Link href="/super-admin/settings" className="btn btn-secondary btn-sm">⚙️ Settings</Link>
           <Link href="/reports" className="btn btn-secondary btn-sm">📥 Reports</Link>
           <Link href="/super-admin/hospitals" className="btn btn-primary btn-sm">＋ Add Hospital</Link>
         </div>

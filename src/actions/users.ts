@@ -9,6 +9,7 @@ import {
   RejectRegistrationSchema,
   UpdateUserStatusSchema,
 } from '@/lib/validations'
+import { sendEmail } from '@/lib/email'
 import type { ActionResult, UserRole } from '@/types'
 
 const VALID_ROLES: UserRole[] = [
@@ -109,6 +110,18 @@ export async function approveRegistration(registrationId: string, assignedRole?:
     action_url: '/login',
   })
 
+  // Email the registering user
+  sendEmail({
+    to: req.email,
+    subject: 'Your CAMS Account Has Been Approved',
+    html: `
+      <p>Hi <strong>${req.full_name}</strong>,</p>
+      <p>Great news! Your account request for <strong>CAMS</strong> has been approved.</p>
+      <p>You can now sign in using your email and the password you set during registration.</p>
+      <a href="${process.env.NEXT_PUBLIC_APP_URL ?? ''}/login" style="display:inline-block;padding:10px 22px;background:#2E7D32;color:white;border-radius:8px;text-decoration:none;font-weight:700">Sign In Now →</a>
+    `,
+  }).catch(() => {/* non-fatal */})
+
   await admin.from(T.activity_logs).insert({
     user_id: authUser.id,
     action: 'approve_registration',
@@ -170,6 +183,20 @@ export async function rejectRegistration(registrationId: string, reason: string)
       body: parsed.data.reason,
     })
   }
+
+  // Email the registering user about the rejection
+  sendEmail({
+    to: req.email,
+    subject: 'Update on Your CAMS Registration Request',
+    html: `
+      <p>Hi <strong>${req.full_name}</strong>,</p>
+      <p>Thank you for your interest in CAMS. Unfortunately, your account request could not be approved at this time.</p>
+      <p style="background:#FFEBEE;border-left:4px solid #EF5350;padding:12px 16px;border-radius:0 8px 8px 0;margin:16px 0">
+        <strong>Reason:</strong> ${parsed.data.reason}
+      </p>
+      <p>If you believe this is an error, please contact your hospital administrator.</p>
+    `,
+  }).catch(() => {/* non-fatal */})
 
   await admin.from(T.activity_logs).insert({
     user_id: authUser.id,

@@ -1,7 +1,8 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
 import { toast } from 'sonner'
+import { requestPlanUpgrade } from '@/actions/billing'
 import type { Plan } from '@/types'
 
 type Subscription = Awaited<ReturnType<typeof import('@/actions/billing').getHospitalBillingData>>['subscription']
@@ -33,6 +34,9 @@ export default function BillingClient({
   role: string
 }) {
   const [showUpgrade, setShowUpgrade] = useState(false)
+  const [selectedPlanId, setSelectedPlanId] = useState('')
+  const [selectedCycle, setSelectedCycle] = useState<'monthly' | 'yearly'>('monthly')
+  const [isPending, startTransition] = useTransition()
 
   const sub = subscription as (typeof subscription & { plan?: Plan | Plan[] }) | null
   const planRaw = sub?.plan
@@ -81,7 +85,7 @@ export default function BillingClient({
         <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', position: 'relative' }}>
           {[
             { label: 'Status', value: sub?.status ?? '—' },
-            { label: 'Period Ends', value: sub?.current_period_end ? new Date(sub.current_period_end).toLocaleDateString() : '—' },
+            { label: 'Period Ends', value: sub?.current_period_end ? new Date(sub.current_period_end).toLocaleDateString('en-CA') : '—' },
             { label: 'Days Left', value: isExpired ? 'Expired' : daysLeft != null ? `${daysLeft}d` : '—' },
             { label: 'Max Users', value: currentPlan?.max_users ?? '—' },
           ].map((stat) => (
@@ -138,36 +142,65 @@ export default function BillingClient({
         <div className="card" style={{ marginBottom: 20 }}>
           <div className="card-header">
             <div className="card-title">⬆️ Upgrade / Change Plan</div>
-            <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Contact your account manager to process the upgrade</div>
+            <div style={{ fontSize: 12, color: 'var(--gray-500)' }}>Select a plan and submit — our team will process the change</div>
           </div>
           <div className="card-body">
+            {/* Billing cycle toggle */}
+            <div style={{ display: 'flex', gap: 8, marginBottom: 20, alignItems: 'center' }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--gray-600)' }}>Billing:</span>
+              {(['monthly', 'yearly'] as const).map((cycle) => (
+                <button
+                  key={cycle}
+                  onClick={() => setSelectedCycle(cycle)}
+                  style={{
+                    padding: '5px 14px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                    background: selectedCycle === cycle ? 'var(--blue)' : 'var(--gray-100)',
+                    color: selectedCycle === cycle ? 'white' : 'var(--gray-600)',
+                  }}
+                >
+                  {cycle.charAt(0).toUpperCase() + cycle.slice(1)}
+                  {cycle === 'yearly' && <span style={{ marginLeft: 5, fontSize: 11, background: '#E8F5E9', color: '#2E7D32', borderRadius: 4, padding: '1px 5px' }}>Save 15%</span>}
+                </button>
+              ))}
+            </div>
+
+            {/* Plan cards */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: 16, marginBottom: 20 }}>
               {plans.filter((p) => p.id !== 'trial').map((plan) => {
                 const isCurrent = sub?.plan_id === plan.id
+                const isSelected = selectedPlanId === plan.id
+                const price = selectedCycle === 'yearly' ? plan.price_yearly : plan.price_monthly
                 return (
                   <div
                     key={plan.id}
+                    onClick={() => !isCurrent && setSelectedPlanId(plan.id)}
                     style={{
-                      border: isCurrent ? `2px solid ${PLAN_ACCENT[plan.id]}` : '1px solid var(--gray-200)',
-                      background: isCurrent ? PLAN_COLORS[plan.id] : 'white',
+                      border: isSelected ? `2px solid ${PLAN_ACCENT[plan.id] ?? '#1565C0'}` : isCurrent ? `2px solid ${PLAN_ACCENT[plan.id] ?? '#1565C0'}` : '1px solid var(--gray-200)',
+                      background: isSelected ? (PLAN_COLORS[plan.id] ?? '#F0F4F8') : isCurrent ? (PLAN_COLORS[plan.id] ?? '#F0F4F8') : 'white',
                       borderRadius: 12, padding: '20px 18px',
+                      cursor: isCurrent ? 'default' : 'pointer',
+                      transition: 'box-shadow 0.15s',
+                      boxShadow: isSelected ? `0 0 0 3px ${PLAN_ACCENT[plan.id] ?? '#1565C0'}33` : undefined,
                     }}
                   >
                     {isCurrent && (
                       <div style={{ fontSize: 11, fontWeight: 700, color: PLAN_ACCENT[plan.id], marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.07em' }}>Current Plan</div>
                     )}
+                    {isSelected && !isCurrent && (
+                      <div style={{ fontSize: 11, fontWeight: 700, color: PLAN_ACCENT[plan.id] ?? '#1565C0', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.07em' }}>✓ Selected</div>
+                    )}
                     <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 4 }}>{plan.name}</div>
-                    {plan.price_monthly > 0 ? (
-                      <div style={{ fontSize: 20, fontWeight: 800, color: PLAN_ACCENT[plan.id], marginBottom: 8 }}>
-                        SAR {plan.price_monthly}<span style={{ fontSize: 12, color: '#6B8299', fontWeight: 400 }}>/mo</span>
+                    {price > 0 ? (
+                      <div style={{ fontSize: 20, fontWeight: 800, color: PLAN_ACCENT[plan.id] ?? '#1565C0', marginBottom: 8 }}>
+                        SAR {price}<span style={{ fontSize: 12, color: '#6B8299', fontWeight: 400 }}>/{selectedCycle === 'yearly' ? 'yr' : 'mo'}</span>
                       </div>
                     ) : (
-                      <div style={{ fontSize: 16, fontWeight: 700, color: PLAN_ACCENT[plan.id], marginBottom: 8 }}>Custom Pricing</div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: PLAN_ACCENT[plan.id] ?? '#1565C0', marginBottom: 8 }}>Custom Pricing</div>
                     )}
                     <ul style={{ listStyle: 'none', padding: 0, margin: 0, fontSize: 12, color: '#3D5166' }}>
                       {plan.features.map((f, i) => (
                         <li key={i} style={{ paddingBottom: 3, display: 'flex', gap: 6 }}>
-                          <span style={{ color: PLAN_ACCENT[plan.id] }}>✓</span> {f}
+                          <span style={{ color: PLAN_ACCENT[plan.id] ?? '#1565C0' }}>✓</span> {f}
                         </li>
                       ))}
                     </ul>
@@ -175,11 +208,34 @@ export default function BillingClient({
                 )
               })}
             </div>
-            <div style={{ background: '#F0F4F8', borderRadius: 10, padding: '14px 20px', fontSize: 13, color: '#3D5166' }}>
-              <strong>To upgrade your plan</strong>, please contact our team:<br />
-              📧 <a href="mailto:billing@cams.sa" style={{ color: 'var(--blue)' }}>billing@cams.sa</a>
-              &nbsp;·&nbsp; 📞 <a href="tel:+966112345678" style={{ color: 'var(--blue)' }}>+966 11 234 5678</a>
-              &nbsp;·&nbsp; Your Reference: <strong>{hospital?.id?.slice(0, 8).toUpperCase()}</strong>
+
+            {/* Submit button */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <button
+                className="btn btn-primary"
+                disabled={!selectedPlanId || selectedPlanId === sub?.plan_id || isPending}
+                onClick={() => {
+                  if (!selectedPlanId) return
+                  startTransition(async () => {
+                    const r = await requestPlanUpgrade(selectedPlanId, selectedCycle)
+                    if (r.success) {
+                      toast.success('Upgrade request submitted! Our team will be in touch shortly.')
+                      setShowUpgrade(false)
+                      setSelectedPlanId('')
+                    } else {
+                      toast.error(r.error ?? 'Failed to submit request')
+                    }
+                  })
+                }}
+              >
+                {isPending ? '⏳ Submitting…' : '⬆️ Request Upgrade'}
+              </button>
+              {!selectedPlanId && (
+                <span style={{ fontSize: 13, color: 'var(--gray-500)' }}>Select a plan above to continue</span>
+              )}
+              {selectedPlanId === sub?.plan_id && (
+                <span style={{ fontSize: 13, color: 'var(--gray-500)' }}>This is your current plan</span>
+              )}
             </div>
           </div>
         </div>
@@ -229,8 +285,8 @@ export default function BillingClient({
                   <tr key={inv.id}>
                     <td style={{ fontWeight: 600, fontFamily: 'monospace', fontSize: 12 }}>{inv.invoice_number}</td>
                     <td className="text-sm text-muted">
-                      {inv.period_start ? new Date(inv.period_start).toLocaleDateString() : '—'}
-                      {inv.period_end ? ` → ${new Date(inv.period_end).toLocaleDateString()}` : ''}
+                      {inv.period_start ? new Date(inv.period_start).toLocaleDateString('en-CA') : '—'}
+                      {inv.period_end ? ` → ${new Date(inv.period_end).toLocaleDateString('en-CA')}` : ''}
                     </td>
                     <td>SAR {Number(inv.amount).toFixed(2)}</td>
                     <td className="text-muted text-sm">SAR {Number(inv.tax).toFixed(2)}</td>
@@ -241,7 +297,7 @@ export default function BillingClient({
                       </span>
                     </td>
                     <td className="text-sm text-muted">
-                      {inv.paid_at ? new Date(inv.paid_at).toLocaleDateString() : '—'}
+                      {inv.paid_at ? new Date(inv.paid_at).toLocaleDateString('en-CA') : '—'}
                     </td>
                     <td>
                       <button

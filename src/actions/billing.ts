@@ -866,3 +866,78 @@ export async function completeHospitalSignup(formData: FormData): Promise<Action
 
   return { success: true, data: { transactionId, hospitalId: hospital.id } }
 }
+
+// ─── Hospital: Request plan upgrade ──────────────────────────────────────────
+
+export async function requestPlanUpgrade(
+  newPlanId: string,
+  billingCycle: 'monthly' | 'yearly'
+): Promise<ActionResult> {
+  const supabase = await createClient()
+  const { data: { user: authUser } } = await supabase.auth.getUser()
+  if (!authUser) return { success: false, error: 'Unauthorized' }
+
+  const admin = createAdminClient()
+  const { data: caller } = await admin
+    .from(T.users)
+    .select('role, hospital_id, full_name, email')
+    .eq('id', authUser.id)
+    .single()
+
+  if (!caller || !['hospital_admin', 'super_admin'].includes(caller.role)) {
+    return { success: false, error: 'Only hospital admins can request plan upgrades' }
+  }
+
+  const { data: plan } = await admin
+    .from(T.plans)
+    .select('id, name')
+    .eq('id', newPlanId)
+    .single()
+
+  if (!plan) return { success: false, error: 'Plan not found' }
+
+  const { data: hospital } = await admin
+    .from(T.hospitals)
+    .select('id, name, subscription_plan')
+    .eq('id', caller.hospital_id ?? '')
+    .single()
+
+  if (!hospital) return { success: false, error: 'Hospital not found' }
+
+  // Notify all super admins via in-app notification
+  const { data: superAdmins } = await admin
+    .from(T.users)
+    .select('id')
+    .eq('role', 'super_admin')
+    .eq('status', 'active')
+
+  if (superAdmins && superAdmins.length > 0) {
+    await admin.from(T.notifications).insert(
+      superAdmins.map((sa) => ({
+        user_id: sa.id,
+        type: 'info',
+        category: 'billing',
+        title: 'Plan Upgrade Request',
+        body: `${hospital.name} (admin: ${caller.full_name}) has requested an upgrade to the ${plan.name} plan (${billingCycle}).`,
+        action_url: '/super-admin/subscriptions',
+      }))
+    )
+  }
+
+  // Log the request
+  await admin.from(T.activity_logs).insert({
+    user_id: authUser.id,
+    action: 'request_plan_upgrade',
+    entity_type: 'hospital',
+    entity_id: hospital.id,
+    description: `${hospital.name} requested upgrade to ${plan.name} plan (${billingCycle})`,
+    metadata: {
+      from_plan: hospital.subscription_plan,
+      to_plan: newPlanId,
+      billing_cycle: billingCycle,
+      requester_email: caller.email,
+    },
+  })
+
+  return { success: true }
+}

@@ -314,6 +314,28 @@ export async function sendLicenseExpiryAlert(
   })
 }
 
+// ─── Shared: check email pref for a user+category ────────────────────────────
+
+async function isEmailPrefEnabled(userId: string, category: NotifCategory): Promise<boolean> {
+  const admin = createAdminClient()
+  const { data: prefs } = await admin
+    .from('CAMS_notification_prefs')
+    .select(`email_${category}`)
+    .eq('user_id', userId)
+    .single()
+  if (!prefs) return true // default: enabled when no row exists
+  const key = `email_${category}` as keyof typeof prefs
+  return prefs[key] !== false
+}
+
+// ─── Shared: look up user id by email ────────────────────────────────────────
+
+async function getUserIdByEmail(email: string): Promise<string | null> {
+  const admin = createAdminClient()
+  const { data } = await admin.from('CAMS_users').select('id').eq('email', email).single()
+  return data?.id ?? null
+}
+
 // ─── Email: assessment assigned ───────────────────────────────────────────────
 
 export async function emailAssessmentAssignedNotif(
@@ -322,6 +344,8 @@ export async function emailAssessmentAssignedNotif(
   templateTitle: string,
   assessmentId: string
 ): Promise<void> {
+  const userId = await getUserIdByEmail(staffEmail)
+  if (userId && !(await isEmailPrefEnabled(userId, 'assessments'))) return
   const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'https://cams.sa'
   await sendEmail({
     to: staffEmail,
@@ -339,6 +363,8 @@ export async function emailAssessmentResultNotif(
   passed: boolean,
   score: number
 ): Promise<void> {
+  const userId = await getUserIdByEmail(staffEmail)
+  if (userId && !(await isEmailPrefEnabled(userId, 'assessments'))) return
   await sendEmail({
     to: staffEmail,
     subject: `Assessment Result: ${passed ? 'Passed ✅' : 'Not Passed ❌'} — ${templateTitle}`,
@@ -355,6 +381,8 @@ export async function emailCertExpiryNotif(
   expiryDate: string,
   daysLeft: number
 ): Promise<void> {
+  const userId = await getUserIdByEmail(staffEmail)
+  if (userId && !(await isEmailPrefEnabled(userId, 'certificates'))) return
   await sendEmail({
     to: staffEmail,
     subject: `Certificate Expiring in ${daysLeft} days: ${templateTitle}`,
@@ -371,6 +399,8 @@ export async function emailSubscriptionExpiryNotif(
   expiryDate: string,
   daysLeft: number
 ): Promise<void> {
+  const userId = await getUserIdByEmail(adminEmail)
+  if (userId && !(await isEmailPrefEnabled(userId, 'billing'))) return
   await sendEmail({
     to: adminEmail,
     subject: `CAMS Subscription Expiring in ${daysLeft} days — ${hospitalName}`,
@@ -386,6 +416,8 @@ export async function emailLicenseExpiryNotif(
   expiryDate: string,
   daysLeft: number
 ): Promise<void> {
+  const userId = await getUserIdByEmail(staffEmail)
+  if (userId && !(await isEmailPrefEnabled(userId, 'certificates'))) return
   await sendEmail({
     to: staffEmail,
     subject: `Nursing License Expiring in ${daysLeft} days`,

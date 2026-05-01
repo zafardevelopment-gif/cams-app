@@ -311,12 +311,12 @@ export function StaffProfileClient({ staff, history, assessments, certs, departm
               </div>
               <div className="form-group">
                 <label className="form-label text-muted">Created</label>
-                <div style={{ fontSize: 14 }}>{new Date(s.created_at).toLocaleDateString()}</div>
+                <div style={{ fontSize: 14 }}>{new Date(s.created_at).toLocaleDateString('en-CA')}</div>
               </div>
               {s.archived_at && (
                 <div className="form-group">
                   <label className="form-label text-muted">Archived</label>
-                  <div style={{ fontSize: 14, color: 'var(--red)' }}>{new Date(s.archived_at).toLocaleDateString()} — {s.termination_reason}</div>
+                  <div style={{ fontSize: 14, color: 'var(--red)' }}>{new Date(s.archived_at).toLocaleDateString('en-CA')} — {s.termination_reason}</div>
                 </div>
               )}
             </div>
@@ -369,7 +369,7 @@ export function StaffProfileClient({ staff, history, assessments, certs, departm
                       <tr key={String(a.id)}>
                         <td style={{ fontWeight: 500 }}>{tpl?.title ?? '—'}</td>
                         <td><span className={`badge ${ASSESS_BADGE[String(a.status)] ?? 'badge-gray'}`}>{String(a.status).replace(/_/g, ' ')}</span></td>
-                        <td className="text-sm text-muted">{new Date(String(a.created_at)).toLocaleDateString()}</td>
+                        <td className="text-sm text-muted">{new Date(String(a.created_at)).toLocaleDateString('en-CA')}</td>
                       </tr>
                     )
                   })}

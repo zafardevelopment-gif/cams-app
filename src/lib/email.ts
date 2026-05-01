@@ -1,9 +1,7 @@
 // Email helper — uses Resend when RESEND_API_KEY is set.
+// API key and FROM address are resolved from CAMS_settings DB table first,
+// then fall back to environment variables.
 // Falls back to console.log in dev / when key is absent.
-// To activate: npm install resend && set RESEND_API_KEY in .env.local
-
-const FROM = process.env.EMAIL_FROM ?? 'CAMS <noreply@cams.sa>'
-const RESEND_KEY = process.env.RESEND_API_KEY
 
 interface EmailPayload {
   to: string
@@ -11,8 +9,36 @@ interface EmailPayload {
   html: string
 }
 
+async function resolveEmailConfig(): Promise<{ apiKey: string | null; from: string }> {
+  try {
+    // Dynamic import to avoid circular deps — email.ts is imported by actions
+    const { createAdminClient } = await import('@/lib/supabase/admin')
+    const admin = createAdminClient()
+    const { data: rows } = await admin
+      .from('CAMS_settings')
+      .select('key, value')
+      .in('key', ['resend_api_key', 'email_from'])
+      .is('hospital_id', null)
+
+    const dbKey = rows?.find((r) => r.key === 'resend_api_key')?.value as string | undefined
+    const dbFrom = rows?.find((r) => r.key === 'email_from')?.value as string | undefined
+
+    return {
+      apiKey: (dbKey || process.env.RESEND_API_KEY) ?? null,
+      from: dbFrom || process.env.EMAIL_FROM || 'CAMS <noreply@cams.sa>',
+    }
+  } catch {
+    return {
+      apiKey: process.env.RESEND_API_KEY ?? null,
+      from: process.env.EMAIL_FROM ?? 'CAMS <noreply@cams.sa>',
+    }
+  }
+}
+
 export async function sendEmail(payload: EmailPayload): Promise<void> {
-  if (!RESEND_KEY) {
+  const { apiKey, from } = await resolveEmailConfig()
+
+  if (!apiKey) {
     // Dev / no-op — log instead of fail
     console.log('[email] (no RESEND_API_KEY — not sent)', payload.to, payload.subject)
     return
@@ -22,10 +48,10 @@ export async function sendEmail(payload: EmailPayload): Promise<void> {
     const res = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: {
-        Authorization: `Bearer ${RESEND_KEY}`,
+        Authorization: `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ from: FROM, to: payload.to, subject: payload.subject, html: payload.html }),
+      body: JSON.stringify({ from, to: payload.to, subject: payload.subject, html: payload.html }),
     })
     if (!res.ok) {
       const text = await res.text()

@@ -164,7 +164,7 @@ export default function HospitalsClient({
                         )}
                       </td>
                       <td className={`text-sm ${isExpired ? '' : 'text-muted'}`} style={{ color: isExpired ? 'var(--red)' : undefined }}>
-                        {sub?.current_period_end ? new Date(sub.current_period_end).toLocaleDateString() : '—'}
+                        {sub?.current_period_end ? new Date(sub.current_period_end).toLocaleDateString('en-CA') : '—'}
                         {isExpired && ' ⚠️'}
                       </td>
                       <td>{h.cbahi_accredited ? '✅' : '—'}</td>

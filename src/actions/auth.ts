@@ -11,6 +11,7 @@ import {
   ForgotPasswordSchema,
   UpdatePasswordSchema,
 } from '@/lib/validations'
+import { sendEmail } from '@/lib/email'
 import type { ActionResult } from '@/types'
 
 export async function login(formData: FormData): Promise<ActionResult> {
@@ -134,6 +135,50 @@ export async function register(formData: FormData): Promise<ActionResult<{ messa
     // Clean up the auth user to avoid orphans
     await admin.auth.admin.deleteUser(authData.user.id)
     return { success: false, error: 'Failed to submit registration. Please try again.' }
+  }
+
+  // Notify hospital admins of the new registration request
+  if (hospital_id) {
+    const { data: admins } = await admin
+      .from(T.users)
+      .select('id, email, full_name')
+      .eq('hospital_id', hospital_id)
+      .in('role', ['hospital_admin', 'branch_admin', 'hr_quality'])
+      .eq('status', 'active')
+
+    if (admins && admins.length > 0) {
+      // In-app notifications
+      await admin.from(T.notifications).insert(
+        admins.map((a) => ({
+          user_id: a.id,
+          type: 'info',
+          category: 'system',
+          title: 'New Registration Request',
+          body: `${full_name} (${email}) has submitted a registration request and is awaiting approval.`,
+          action_url: '/hospital-admin/pending-registrations',
+        }))
+      )
+
+      // Email notifications (fire-and-forget, no await on failure)
+      const reviewUrl = `${process.env.NEXT_PUBLIC_APP_URL ?? ''}/hospital-admin/pending-registrations`
+      for (const a of admins) {
+        sendEmail({
+          to: a.email,
+          subject: `New Registration Request — ${full_name}`,
+          html: `
+            <p>Hi <strong>${a.full_name}</strong>,</p>
+            <p>A new staff member has submitted a registration request for your hospital:</p>
+            <ul style="margin:12px 0;padding-left:20px;line-height:2">
+              <li><strong>Name:</strong> ${full_name}</li>
+              <li><strong>Email:</strong> ${email}</li>
+              ${job_title ? `<li><strong>Job Title:</strong> ${job_title}</li>` : ''}
+            </ul>
+            <p>Please review and approve or reject this request.</p>
+            <a href="${reviewUrl}" style="display:inline-block;padding:10px 22px;background:#1565C0;color:white;border-radius:8px;text-decoration:none;font-weight:700">Review Request →</a>
+          `,
+        }).catch(() => {/* email failure is non-fatal */})
+      }
+    }
   }
 
   return {

@@ -14,6 +14,7 @@ import {
   ReattemptSchema,
 } from '@/lib/validations'
 import type { ActionResult, QuizQuestion } from '@/types'
+import { emailAssessmentAssignedNotif } from '@/actions/notifications'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -281,6 +282,27 @@ export async function evaluatorReview(
       status: 'pending',
     }))
     await ctx.admin.from(T.approvals).insert(approvalInserts)
+
+    // Email level-1 approvers (head_nurse / unit_head) about the pending review
+    const firstApproverRole = levelRoles[0] ?? 'assessor'
+    const { data: approverUsers } = await ctx.admin
+      .from(T.users)
+      .select('email, full_name')
+      .eq('hospital_id', ctx.profile.hospital_id)
+      .eq('role', firstApproverRole)
+      .eq('status', 'active')
+
+    if (approverUsers && approverUsers.length > 0) {
+      const templateTitle = (Array.isArray(assessment.template) ? assessment.template[0] : assessment.template as { title?: string } | null)?.title ?? 'competency'
+      for (const approver of approverUsers) {
+        emailAssessmentAssignedNotif(
+          approver.email,
+          approver.full_name,
+          `[Review Required] ${templateTitle}`,
+          assessmentId,
+        ).catch(() => {/* non-fatal */})
+      }
+    }
   }
 
   await ctx.admin.from(T.activity_logs).insert({

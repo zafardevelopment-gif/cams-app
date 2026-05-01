@@ -137,7 +137,7 @@ export default function SubscriptionsClient({
                     <td style={{ fontWeight: 500 }}>{s.hospital_name}</td>
                     <td><span className="badge badge-blue">{s.plan_id}</span></td>
                     <td><span className={`badge ${STATUS_BADGE[s.status] ?? 'badge-gray'}`}>{s.status}</span></td>
-                    <td className="text-sm text-muted">{new Date(s.created_at).toLocaleDateString()}</td>
+                    <td className="text-sm text-muted">{new Date(s.created_at).toLocaleDateString('en-CA')}</td>
                   </tr>
                 ))}
                 {dashData.recentSignups.length === 0 && (
@@ -180,7 +180,7 @@ export default function SubscriptionsClient({
                     <td><span className="badge badge-blue">{sub.plan_id}</span></td>
                     <td><span className={`badge ${STATUS_BADGE[sub.status] ?? 'badge-gray'}`}>{sub.status}</span></td>
                     <td className={`text-sm ${isExpired ? 'text-red' : 'text-muted'}`}>
-                      {sub.current_period_end ? new Date(sub.current_period_end).toLocaleDateString() : '—'}
+                      {sub.current_period_end ? new Date(sub.current_period_end).toLocaleDateString('en-CA') : '—'}
                       {isExpired && ' ⚠️'}
                     </td>
                     <td className="text-sm">{sub.billing_cycle}</td>
@@ -247,7 +247,7 @@ export default function SubscriptionsClient({
                   </td>
                   <td><span className="badge badge-blue">{s.plan_id}</span></td>
                   <td><span className={`badge ${STATUS_BADGE[s.status] ?? 'badge-gray'}`}>{s.status}</span></td>
-                  <td className="text-sm text-muted">{new Date(s.created_at).toLocaleDateString()}</td>
+                  <td className="text-sm text-muted">{new Date(s.created_at).toLocaleDateString('en-CA')}</td>
                   <td>
                     {s.status === 'pending' ? (
                       <div style={{ display: 'flex', gap: 4 }}>
@@ -411,7 +411,7 @@ export default function SubscriptionsClient({
                       <td className="text-muted text-sm">SAR {Number(inv.tax).toFixed(2)}</td>
                       <td style={{ fontWeight: 600 }}>SAR {Number(inv.total).toFixed(2)}</td>
                       <td><span className={`badge ${STATUS_BADGE[inv.status] ?? 'badge-gray'}`}>{inv.status}</span></td>
-                      <td className="text-sm text-muted">{new Date(inv.created_at).toLocaleDateString()}</td>
+                      <td className="text-sm text-muted">{new Date(inv.created_at).toLocaleDateString('en-CA')}</td>
                       <td>
                         {inv.status === 'pending' && (
                           <div style={{ display: 'flex', gap: 4 }}>
@@ -533,7 +533,7 @@ export default function SubscriptionsClient({
                     <td className="text-sm">
                       {c.used_count}{c.max_uses ? `/${c.max_uses}` : ''}
                     </td>
-                    <td className="text-sm text-muted">{c.valid_until ? new Date(c.valid_until).toLocaleDateString() : '∞'}</td>
+                    <td className="text-sm text-muted">{c.valid_until ? new Date(c.valid_until).toLocaleDateString('en-CA') : '∞'}</td>
                     <td><span className={`badge ${c.is_active ? 'badge-green' : 'badge-gray'}`}>{c.is_active ? 'Active' : 'Inactive'}</span></td>
                     <td>
                       <button

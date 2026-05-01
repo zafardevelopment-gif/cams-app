@@ -390,7 +390,7 @@ function ReportTable({ reportId, data }: { reportId: string; data: ReportData })
               <td>{r.knowledge_score != null ? `${r.knowledge_score}%` : '—'}</td>
               <td>{r.quiz_score != null ? `${r.quiz_score}%` : '—'}</td>
               <td>{r.practical_score != null ? `${r.practical_score}%` : '—'}</td>
-              <td className="text-sm text-muted">{r.completed_at ? new Date(String(r.completed_at)).toLocaleDateString() : '—'}</td>
+              <td className="text-sm text-muted">{r.completed_at ? new Date(String(r.completed_at)).toLocaleDateString('en-CA') : '—'}</td>
             </tr>
           ))}
         </tbody>
@@ -413,7 +413,7 @@ function ReportTable({ reportId, data }: { reportId: string; data: ReportData })
                 <td>{getNestedStr(r, 'template.title')}</td>
                 <td><span className="badge badge-gray">{getNestedStr(r, 'template.category')}</span></td>
                 <td><StatusBadge status={String(r.status)} /></td>
-                <td className="text-sm">{dueDate ? dueDate.toLocaleDateString() : '—'}</td>
+                <td className="text-sm">{dueDate ? dueDate.toLocaleDateString('en-CA') : '—'}</td>
                 <td style={{ color: 'var(--red)', fontWeight: 600 }}>{daysOverdue != null ? `${daysOverdue}d` : '—'}</td>
               </tr>
             )
@@ -435,9 +435,9 @@ function ReportTable({ reportId, data }: { reportId: string; data: ReportData })
               <td>{getNestedStr(r, 'template.title')}</td>
               <td className="text-sm text-muted">{String(r.certificate_number ?? '—')}</td>
               <td><StatusBadge status={String(r.status)} /></td>
-              <td className="text-sm">{r.issued_date ? new Date(String(r.issued_date)).toLocaleDateString() : '—'}</td>
+              <td className="text-sm">{r.issued_date ? new Date(String(r.issued_date)).toLocaleDateString('en-CA') : '—'}</td>
               <td className="text-sm" style={{ color: r.status === 'expired' ? 'var(--red)' : r.status === 'expiring_soon' ? '#F57F17' : 'inherit' }}>
-                {r.expiry_date ? new Date(String(r.expiry_date)).toLocaleDateString() : '—'}
+                {r.expiry_date ? new Date(String(r.expiry_date)).toLocaleDateString('en-CA') : '—'}
               </td>
               <td>{r.overall_score != null ? `${r.overall_score}%` : '—'}</td>
             </tr>
@@ -459,8 +459,8 @@ function ReportTable({ reportId, data }: { reportId: string; data: ReportData })
               <td className="text-sm">{getNestedStr(r, 'from_hospital.name')}</td>
               <td className="text-sm">{getNestedStr(r, 'to_hospital.name')}</td>
               <td><StatusBadge status={String(r.status)} /></td>
-              <td className="text-sm">{r.effective_date ? new Date(String(r.effective_date)).toLocaleDateString() : '—'}</td>
-              <td className="text-sm text-muted">{new Date(String(r.created_at)).toLocaleDateString()}</td>
+              <td className="text-sm">{r.effective_date ? new Date(String(r.effective_date)).toLocaleDateString('en-CA') : '—'}</td>
+              <td className="text-sm text-muted">{new Date(String(r.created_at)).toLocaleDateString('en-CA')}</td>
             </tr>
           ))}
         </tbody>
@@ -585,23 +585,23 @@ function buildExcelRows(reportId: string, data: ReportData): unknown[][] {
     },
     pass_fail: {
       headers: ['Staff', 'Employee ID', 'Competency', 'Category', 'Result', 'Overall %', 'Knowledge %', 'Quiz %', 'Practical %', 'Date'],
-      mapper: (r) => [getStr(r, 'staff.full_name'), getStr(r, 'staff.employee_id'), getStr(r, 'template.title'), getStr(r, 'template.category'), r.status, r.overall_score ?? '', r.knowledge_score ?? '', r.quiz_score ?? '', r.practical_score ?? '', r.completed_at ? new Date(String(r.completed_at)).toLocaleDateString() : ''],
+      mapper: (r) => [getStr(r, 'staff.full_name'), getStr(r, 'staff.employee_id'), getStr(r, 'template.title'), getStr(r, 'template.category'), r.status, r.overall_score ?? '', r.knowledge_score ?? '', r.quiz_score ?? '', r.practical_score ?? '', r.completed_at ? new Date(String(r.completed_at)).toLocaleDateString('en-CA') : ''],
     },
     overdue: {
       headers: ['Staff', 'Job Title', 'Competency', 'Category', 'Status', 'Due Date', 'Days Overdue'],
       mapper: (r) => {
         const dueDate = r.due_date ? new Date(String(r.due_date)) : null
         const daysOverdue = dueDate ? Math.floor((Date.now() - dueDate.getTime()) / 86400000) : ''
-        return [getStr(r, 'staff.full_name'), getStr(r, 'staff.job_title'), getStr(r, 'template.title'), getStr(r, 'template.category'), r.status, dueDate ? dueDate.toLocaleDateString() : '', daysOverdue]
+        return [getStr(r, 'staff.full_name'), getStr(r, 'staff.job_title'), getStr(r, 'template.title'), getStr(r, 'template.category'), r.status, dueDate ? dueDate.toLocaleDateString('en-CA') : '', daysOverdue]
       },
     },
     cert_expiry: {
       headers: ['Staff', 'Employee ID', 'Competency', 'Cert #', 'Status', 'Issued', 'Expires', 'Score'],
-      mapper: (r) => [getStr(r, 'staff.full_name'), getStr(r, 'staff.employee_id'), getStr(r, 'template.title'), r.certificate_number ?? '', r.status, r.issued_date ? new Date(String(r.issued_date)).toLocaleDateString() : '', r.expiry_date ? new Date(String(r.expiry_date)).toLocaleDateString() : '', r.overall_score ?? ''],
+      mapper: (r) => [getStr(r, 'staff.full_name'), getStr(r, 'staff.employee_id'), getStr(r, 'template.title'), r.certificate_number ?? '', r.status, r.issued_date ? new Date(String(r.issued_date)).toLocaleDateString('en-CA') : '', r.expiry_date ? new Date(String(r.expiry_date)).toLocaleDateString('en-CA') : '', r.overall_score ?? ''],
     },
     transfers: {
       headers: ['Staff', 'Employee ID', 'From Hospital', 'To Hospital', 'Status', 'Effective Date', 'Requested'],
-      mapper: (r) => [getStr(r, 'staff.full_name'), getStr(r, 'staff.employee_id'), getStr(r, 'from_hospital.name'), getStr(r, 'to_hospital.name'), r.status, r.effective_date ? new Date(String(r.effective_date)).toLocaleDateString() : '', new Date(String(r.created_at)).toLocaleDateString()],
+      mapper: (r) => [getStr(r, 'staff.full_name'), getStr(r, 'staff.employee_id'), getStr(r, 'from_hospital.name'), getStr(r, 'to_hospital.name'), r.status, r.effective_date ? new Date(String(r.effective_date)).toLocaleDateString('en-CA') : '', new Date(String(r.created_at)).toLocaleDateString('en-CA')],
     },
     template_usage: {
       headers: ['Template', 'Category', 'Active', 'Mandatory', 'Total Uses', 'Passed', 'Failed', 'Pass Rate'],

@@ -126,7 +126,7 @@ export function TransfersClient({ transfers, callerRole, canApprove }: Props) {
                       <td><span className={`badge ${STATUS_BADGE[t.head_nurse_approval] ?? 'badge-gray'}`}>{t.head_nurse_approval}</span></td>
                       <td><span className={`badge ${STATUS_BADGE[t.admin_approval] ?? 'badge-gray'}`}>{t.admin_approval}</span></td>
                       <td><span className={`badge ${STATUS_BADGE[t.status] ?? 'badge-gray'}`}>{t.status}</span></td>
-                      <td className="text-sm text-muted">{new Date(t.created_at).toLocaleDateString()}</td>
+                      <td className="text-sm text-muted">{new Date(t.created_at).toLocaleDateString('en-CA')}</td>
                       <td>
                         {canProcess(t) && (
                           <button className="btn btn-primary btn-sm" onClick={() => { setReviewTarget(t); setNotes('') }}>

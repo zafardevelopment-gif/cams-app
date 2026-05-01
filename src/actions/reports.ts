@@ -392,6 +392,74 @@ export async function getStaffDashboardData(userId: string) {
   }
 }
 
+// ─── Auditor ──────────────────────────────────────────────────────────────────
+
+export async function getAuditorDashboardData(hospitalId: string) {
+  const admin = createAdminClient()
+
+  const [
+    { data: staff },
+    { data: certs },
+    { data: assessments },
+    { data: expiredCerts },
+    { data: branches },
+    { data: departments },
+  ] = await Promise.all([
+    admin.from(T.users).select('id, status').eq('hospital_id', hospitalId).eq('status', 'active'),
+    admin.from(T.certificates).select('id, status, expiry_date').eq('hospital_id', hospitalId),
+    admin.from(T.assessments).select('id, status, branch_id, department_id, created_at').eq('hospital_id', hospitalId),
+    admin.from(T.certificates).select('id').eq('hospital_id', hospitalId).eq('status', 'expired'),
+    admin.from(T.branches).select('id, name').eq('hospital_id', hospitalId).eq('is_active', true),
+    admin.from(T.departments).select('id, name').eq('hospital_id', hospitalId).eq('is_active', true),
+  ])
+
+  const a = assessments ?? []
+  const c = certs ?? []
+
+  const totalStaff = (staff ?? []).length
+  const passed = a.filter((x) => x.status === 'passed').length
+  const failed = a.filter((x) => x.status === 'failed').length
+  const totalCompleted = passed + failed
+  const complianceRate = totalCompleted > 0 ? Math.round((passed / totalCompleted) * 100) : 0
+  const activeCerts = c.filter((x) => x.status === 'active').length
+  const expiringSoon = c.filter((x) => x.status === 'expiring_soon').length
+  const expiredCount = (expiredCerts ?? []).length
+
+  // Branch compliance breakdown
+  const branchList = branches ?? []
+  const branchCompliance = branchList.map((b) => {
+    const ba = a.filter((x) => x.branch_id === b.id)
+    const bp = ba.filter((x) => x.status === 'passed').length
+    const bf = ba.filter((x) => x.status === 'failed').length
+    const total = bp + bf
+    return { name: b.name.length > 14 ? b.name.slice(0, 14) + '…' : b.name, compliance: total > 0 ? Math.round((bp / total) * 100) : 0, total }
+  }).filter((b) => b.total > 0)
+
+  // Department compliance breakdown
+  const deptList = departments ?? []
+  const deptCompliance = deptList.map((d) => {
+    const da = a.filter((x) => x.department_id === d.id)
+    const dp = da.filter((x) => x.status === 'passed').length
+    const df = da.filter((x) => x.status === 'failed').length
+    const total = dp + df
+    return { name: d.name.length > 14 ? d.name.slice(0, 14) + '…' : d.name, compliance: total > 0 ? Math.round((dp / total) * 100) : 0, total }
+  }).filter((d) => d.total > 0)
+
+  return {
+    totalStaff,
+    complianceRate,
+    activeCerts,
+    expiringSoon,
+    expiredCount,
+    totalAssessments: a.length,
+    passed,
+    failed,
+    branchCompliance,
+    deptCompliance,
+    trend: getPassFailTrend(a, 6),
+  }
+}
+
 // ─── Reports ──────────────────────────────────────────────────────────────────
 
 export interface ReportFilters {
