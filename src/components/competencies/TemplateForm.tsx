@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { toast } from 'sonner'
 import { saveTemplateV2 } from '@/actions/competencies'
-import type { QuizQuestion, KnowledgeSection, PracticalItem, QuestionType, TemplateHistory } from '@/types'
+import type { QuizQuestion, KnowledgeSection, KnowledgeAttachment, PracticalItem, QuestionType, TemplateHistory } from '@/types'
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -175,9 +175,61 @@ function QuestionEditor({ q, onChange, onRemove }: {
   )
 }
 
+const ATTACHMENT_ICONS: Record<KnowledgeAttachment['type'], string> = {
+  document: '📄',
+  video: '🎬',
+  audio: '🎵',
+}
+
+const ACCEPT = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-powerpoint',
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+  'video/mp4', 'video/webm', 'video/ogg',
+  'audio/mpeg', 'audio/mp3', 'audio/wav', 'audio/ogg', 'audio/aac',
+].join(',')
+
+function formatSize(bytes: number) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
 function KnowledgeSectionEditor({ s, onChange, onRemove }: {
   s: KnowledgeSection; onChange: (s: KnowledgeSection) => void; onRemove: () => void
 }) {
+  const [uploading, setUploading] = useState(false)
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setUploading(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch('/api/upload', { method: 'POST', body: form })
+      const json = await res.json() as { url?: string; name?: string; type?: KnowledgeAttachment['type']; size?: number; error?: string }
+      if (!res.ok) { toast.error(json.error ?? 'Upload failed'); return }
+      const attachment: KnowledgeAttachment = {
+        id: Math.random().toString(36).slice(2),
+        name: json.name!,
+        url: json.url!,
+        type: json.type!,
+        size: json.size!,
+      }
+      onChange({ ...s, attachments: [...(s.attachments ?? []), attachment] })
+    } finally {
+      setUploading(false)
+      e.target.value = ''
+    }
+  }
+
+  function removeAttachment(id: string) {
+    onChange({ ...s, attachments: (s.attachments ?? []).filter((a) => a.id !== id) })
+  }
+
   return (
     <div className="card" style={{ padding: 14, marginBottom: 10, background: 'var(--gray-50)' }}>
       <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
@@ -188,7 +240,31 @@ function KnowledgeSectionEditor({ s, onChange, onRemove }: {
       <textarea className="form-control" rows={4} value={s.content}
         onChange={(e) => onChange({ ...s, content: e.target.value })}
         placeholder="Section content — study material, instructions, or reference text…"
-        style={{ fontSize: 13 }} />
+        style={{ fontSize: 13, marginBottom: 10 }} />
+
+      {/* Attachments */}
+      {(s.attachments ?? []).length > 0 && (
+        <div style={{ marginBottom: 8 }}>
+          {(s.attachments ?? []).map((a) => (
+            <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'white', borderRadius: 6, border: '1px solid var(--gray-200)', marginBottom: 4 }}>
+              <span style={{ fontSize: 16 }}>{ATTACHMENT_ICONS[a.type]}</span>
+              <a href={a.url} target="_blank" rel="noopener noreferrer" style={{ flex: 1, fontSize: 13, color: 'var(--blue)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {a.name}
+              </a>
+              <span className="text-muted" style={{ fontSize: 11, flexShrink: 0 }}>{formatSize(a.size)}</span>
+              <button type="button" onClick={() => removeAttachment(a.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-400)', fontSize: 14, padding: 0, lineHeight: 1 }}>✕</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <label style={{ display: 'inline-flex', alignItems: 'center', gap: 6, cursor: uploading ? 'not-allowed' : 'pointer' }}>
+        <span className="btn btn-secondary btn-sm" style={{ pointerEvents: 'none', opacity: uploading ? 0.6 : 1 }}>
+          {uploading ? '⏳ Uploading…' : '📎 Attach File'}
+        </span>
+        <input type="file" accept={ACCEPT} style={{ display: 'none' }} disabled={uploading} onChange={handleFileChange} />
+      </label>
+      <span className="text-muted" style={{ fontSize: 11, marginLeft: 8 }}>PDF, Word, PowerPoint, MP4, MP3, WAV · max 100 MB</span>
     </div>
   )
 }

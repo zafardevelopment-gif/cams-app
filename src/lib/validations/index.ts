@@ -205,11 +205,20 @@ export const QuizQuestionSchema = z.object({
   max_score:     z.number().min(0).max(100).optional(),
 })
 
+export const KnowledgeAttachmentSchema = z.object({
+  id:   z.string().min(1),
+  name: z.string().min(1).max(255),
+  url:  z.string().url(),
+  type: z.enum(['document', 'video', 'audio']),
+  size: z.number().int().min(0),
+})
+
 export const KnowledgeSectionSchema = z.object({
-  id:      z.string().min(1),
-  title:   z.string().min(1, 'Section title is required').max(200),
-  content: z.string().min(1, 'Content is required').max(10000),
-  order:   z.number().int().min(0).default(0),
+  id:          z.string().min(1),
+  title:       z.string().min(1, 'Section title is required').max(200),
+  content:     z.string().max(10000).default(''),
+  order:       z.number().int().min(0).default(0),
+  attachments: z.array(KnowledgeAttachmentSchema).optional().default([]),
 })
 
 export const PracticalItemSchema = z.object({

@@ -235,11 +235,20 @@ export interface TemplateHistory {
   changer?: Pick<User, 'id' | 'full_name'> | Pick<User, 'id' | 'full_name'>[]
 }
 
+export interface KnowledgeAttachment {
+  id: string
+  name: string
+  url: string
+  type: 'document' | 'video' | 'audio'
+  size: number
+}
+
 export interface KnowledgeSection {
   id: string
   title: string
   content: string
   order: number
+  attachments?: KnowledgeAttachment[]
 }
 
 export type QuestionType = 'mcq' | 'true_false' | 'short_answer' | 'rating' | 'checklist'
