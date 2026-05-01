@@ -20,7 +20,6 @@ const STEP_DESC: Record<string, string> = {
   unit:       'Sub-groups within a department (e.g. Ward A)',
   staff:      'Import or invite staff accounts',
   competency: 'Define skills staff need to demonstrate',
-  assessment: 'Assign and run competency assessments',
 }
 
 export function HospitalOnboardingBanner({ setupStep, config }: Props) {

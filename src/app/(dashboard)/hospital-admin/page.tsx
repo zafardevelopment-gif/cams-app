@@ -58,9 +58,8 @@ export default async function HospitalAdminPage() {
     branchCount,
     deptCount,
     unitCount,
-    staffCount:     dashData.totalStaff,
+    staffCount: dashData.totalStaff,
     compCount,
-    assessmentCount: dashData.activeAssessments,
   })
 
   return (

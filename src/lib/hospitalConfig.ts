@@ -95,13 +95,6 @@ export const ALL_SETUP_STEP_DEFS: SetupStepDef[] = [
     desc: 'Define skills staff need to demonstrate',
     href: '/competencies',
   },
-  {
-    key: 'assessment',
-    icon: '✅',
-    label: 'Start Assessments',
-    desc: 'Assign and run competency assessments',
-    href: '/assessments',
-  },
 ]
 
 /** Returns only the steps that are active for a given config. */
@@ -116,7 +109,7 @@ export function getActiveSetupSteps(config: HospitalConfig): SetupStepDef[] {
  * Returns activeSteps.length when all steps are complete.
  *
  * Counts order must match ALL_SETUP_STEP_DEFS key order:
- *   branchCount, deptCount, unitCount, staffCount, compCount, assessmentCount
+ *   branchCount, deptCount, unitCount, staffCount, compCount
  */
 export function computeSetupStep(
   config: HospitalConfig,
@@ -126,7 +119,6 @@ export function computeSetupStep(
     unitCount: number
     staffCount: number
     compCount: number
-    assessmentCount: number
   },
 ): number {
   const countByKey: Record<string, number> = {
@@ -135,7 +127,6 @@ export function computeSetupStep(
     unit:       counts.unitCount,
     staff:      counts.staffCount,
     competency: counts.compCount,
-    assessment: counts.assessmentCount,
   }
 
   const activeSteps = getActiveSetupSteps(config)
