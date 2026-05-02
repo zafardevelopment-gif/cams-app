@@ -12,10 +12,12 @@ export function NewAssessmentForm({
   templates,
   assessors,
   defaultTemplateId,
+  isStaff = false,
 }: {
   templates: Template[]
   assessors: Assessor[]
   defaultTemplateId?: string
+  isStaff?: boolean
 }) {
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
@@ -79,20 +81,24 @@ export function NewAssessmentForm({
           <div className="card-header"><div className="card-title">Assessment Details</div></div>
           <div className="card-body">
             <form action={handleSubmit}>
-              <div className="form-group">
-                <label className="form-label">Assign Assessor</label>
-                <select name="assessor_id" className="form-control">
-                  <option value="">Select assessor (optional)</option>
-                  {assessors.map((a) => (
-                    <option key={a.id} value={a.id}>{a.full_name}</option>
-                  ))}
-                </select>
-              </div>
+              {!isStaff && (
+                <>
+                  <div className="form-group">
+                    <label className="form-label">Assign Assessor</label>
+                    <select name="assessor_id" className="form-control">
+                      <option value="">Select assessor (optional)</option>
+                      {assessors.map((a) => (
+                        <option key={a.id} value={a.id}>{a.full_name}</option>
+                      ))}
+                    </select>
+                  </div>
 
-              <div className="form-group">
-                <label className="form-label">Due Date</label>
-                <input name="due_date" type="date" className="form-control" />
-              </div>
+                  <div className="form-group">
+                    <label className="form-label">Due Date</label>
+                    <input name="due_date" type="date" className="form-control" />
+                  </div>
+                </>
+              )}
 
               {selectedTemplate ? (
                 <div className="alert alert-info" style={{ marginBottom: 16 }}>
@@ -102,6 +108,12 @@ export function NewAssessmentForm({
                 <div className="alert alert-warning" style={{ marginBottom: 16 }}>
                   ⚠️ Please select a competency template from the left
                 </div>
+              )}
+
+              {isStaff && (
+                <p className="text-sm text-muted" style={{ marginBottom: 16 }}>
+                  An assessor will be assigned to evaluate your submission.
+                </p>
               )}
 
               <button
