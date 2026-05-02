@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useTransition } from 'react'
 import { toast } from 'sonner'
 import { autosaveAssessment, submitAssessmentV2 } from '@/actions/assessments'
-import type { KnowledgeSection, QuizQuestion, QuestionType } from '@/types'
+import type { KnowledgeSection, KnowledgeAttachment, QuizQuestion, QuestionType } from '@/types'
 
 // ── types ─────────────────────────────────────────────────────────────────────
 
@@ -239,9 +239,42 @@ export function TakeAssessmentClient({ assessmentId, template, initialDraft }: P
               <h3 style={{ color: 'var(--navy)', marginBottom: 16, fontSize: 16 }}>
                 {sections[knowledgeSection].title}
               </h3>
-              <div style={{ fontSize: 14, lineHeight: 1.9, color: 'var(--gray-700)', whiteSpace: 'pre-wrap' }}>
-                {sections[knowledgeSection].content}
-              </div>
+              {sections[knowledgeSection].content && (
+                <div style={{ fontSize: 14, lineHeight: 1.9, color: 'var(--gray-700)', whiteSpace: 'pre-wrap', marginBottom: 16 }}>
+                  {sections[knowledgeSection].content}
+                </div>
+              )}
+              {(sections[knowledgeSection].attachments ?? []).length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
+                  {(sections[knowledgeSection].attachments ?? []).map((a: KnowledgeAttachment) => {
+                    const icons: Record<string, string> = { document: '📄', video: '🎬', audio: '🎵' }
+                    return (
+                      <a
+                        key={a.id}
+                        href={a.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 10,
+                          padding: '10px 14px', borderRadius: 8,
+                          border: '1px solid var(--gray-200)', background: '#F8FAFC',
+                          textDecoration: 'none', color: 'var(--navy)',
+                        }}
+                      >
+                        <span style={{ fontSize: 20 }}>{icons[a.type] ?? '📎'}</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 600, fontSize: 13 }}>{a.name}</div>
+                          <div style={{ fontSize: 11, color: 'var(--gray-400)', textTransform: 'capitalize' }}>{a.type}</div>
+                        </div>
+                        <span style={{ fontSize: 12, color: 'var(--blue)', fontWeight: 600 }}>Open ↗</span>
+                      </a>
+                    )
+                  })}
+                </div>
+              )}
+              {!sections[knowledgeSection].content && (sections[knowledgeSection].attachments ?? []).length === 0 && (
+                <p style={{ fontSize: 13, color: 'var(--gray-400)', fontStyle: 'italic' }}>No content in this section.</p>
+              )}
               <div style={{ marginTop: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
                   <input type="checkbox"
