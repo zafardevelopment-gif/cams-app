@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef, useTransition } from 'react'
+import { useState, useEffect, useRef, useCallback, useTransition } from 'react'
 import { toast } from 'sonner'
 import { autosaveAssessment, submitAssessmentV2 } from '@/actions/assessments'
 import type { KnowledgeSection, KnowledgeAttachment, QuizQuestion, QuestionType } from '@/types'
@@ -26,6 +26,131 @@ type Step = 'knowledge' | 'quiz' | 'review' | 'done'
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 const AUTOSAVE_MS = 15000
+
+// ── Inline attachment viewer ──────────────────────────────────────────────────
+
+function AttachmentViewer({
+  attachment,
+  onCompleted,
+  completed,
+}: {
+  attachment: KnowledgeAttachment
+  onCompleted: () => void
+  completed: boolean
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null)
+  const audioRef = useRef<HTMLAudioElement>(null)
+  const [progress, setProgress] = useState(0)
+
+  // Prevent seeking ahead on video/audio
+  const lastValidTime = useRef(0)
+
+  const handleTimeUpdate = useCallback((el: HTMLVideoElement | HTMLAudioElement) => {
+    const pct = el.duration ? Math.round((el.currentTime / el.duration) * 100) : 0
+    setProgress(pct)
+    if (el.currentTime > lastValidTime.current + 1) {
+      // User tried to skip — snap back
+      el.currentTime = lastValidTime.current
+    } else {
+      lastValidTime.current = el.currentTime
+    }
+  }, [])
+
+  const handleEnded = useCallback(() => {
+    setProgress(100)
+    onCompleted()
+  }, [onCompleted])
+
+  if (attachment.type === 'document') {
+    return (
+      <div style={{ marginBottom: 12 }}>
+        <iframe
+          src={attachment.url}
+          style={{ width: '100%', height: 520, border: '1px solid var(--gray-200)', borderRadius: 8 }}
+          title={attachment.name}
+          onLoad={onCompleted}
+        />
+        <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4, textAlign: 'center' }}>
+          📄 {attachment.name}
+        </div>
+      </div>
+    )
+  }
+
+  if (attachment.type === 'video') {
+    return (
+      <div style={{ marginBottom: 12 }}>
+        <video
+          ref={videoRef}
+          src={attachment.url}
+          controls
+          controlsList="nodownload"
+          style={{ width: '100%', borderRadius: 8, background: '#000', maxHeight: 400 }}
+          onTimeUpdate={() => videoRef.current && handleTimeUpdate(videoRef.current)}
+          onEnded={handleEnded}
+          onSeeking={() => {
+            if (videoRef.current && !completed) {
+              videoRef.current.currentTime = lastValidTime.current
+            }
+          }}
+        />
+        {!completed && (
+          <div style={{ marginTop: 6 }}>
+            <div style={{ height: 4, background: 'var(--gray-200)', borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${progress}%`, background: 'var(--blue)', transition: 'width 0.5s' }} />
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 3 }}>
+              Watch the full video to continue — {progress}% complete
+            </div>
+          </div>
+        )}
+        {completed && (
+          <div style={{ fontSize: 11, color: 'var(--green,#16a34a)', marginTop: 4, fontWeight: 600 }}>✓ Video watched</div>
+        )}
+      </div>
+    )
+  }
+
+  if (attachment.type === 'audio') {
+    return (
+      <div style={{ marginBottom: 12, padding: '14px 16px', background: 'var(--gray-50)', borderRadius: 8, border: '1px solid var(--gray-200)' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <span style={{ fontSize: 20 }}>🎵</span>
+          <span style={{ fontSize: 13, fontWeight: 600 }}>{attachment.name}</span>
+        </div>
+        <audio
+          ref={audioRef}
+          src={attachment.url}
+          controls
+          controlsList="nodownload"
+          style={{ width: '100%' }}
+          onTimeUpdate={() => audioRef.current && handleTimeUpdate(audioRef.current)}
+          onEnded={handleEnded}
+          onSeeking={() => {
+            if (audioRef.current && !completed) {
+              audioRef.current.currentTime = lastValidTime.current
+            }
+          }}
+        />
+        {!completed && (
+          <div style={{ marginTop: 6 }}>
+            <div style={{ height: 4, background: 'var(--gray-200)', borderRadius: 2, overflow: 'hidden' }}>
+              <div style={{ height: '100%', width: `${progress}%`, background: 'var(--blue)', transition: 'width 0.5s' }} />
+            </div>
+            <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 3 }}>
+              Listen to the full audio to continue — {progress}% complete
+            </div>
+          </div>
+        )}
+        {completed && (
+          <div style={{ fontSize: 11, color: 'var(--green,#16a34a)', marginTop: 4, fontWeight: 600 }}>✓ Audio complete</div>
+        )}
+      </div>
+    )
+  }
+
+  return null
+}
 
 function QuestionBlock({
   q, idx, answer, onChange,
@@ -123,6 +248,8 @@ export function TakeAssessmentClient({ assessmentId, template, initialDraft }: P
   const [knowledgeRead, setKnowledgeRead] = useState<Record<string, boolean>>(
     (initialDraft?.knowledge_read as Record<string, boolean>) ?? {}
   )
+  // Track which attachments have been fully viewed (keyed by attachment id)
+  const [attachmentsDone, setAttachmentsDone] = useState<Record<string, boolean>>({})
 
   // Quiz answers — keyed by question id
   const [answers, setAnswers] = useState<Record<string, unknown>>(
@@ -245,44 +372,42 @@ export function TakeAssessmentClient({ assessmentId, template, initialDraft }: P
                 </div>
               )}
               {(sections[knowledgeSection].attachments ?? []).length > 0 && (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: 16 }}>
-                  {(sections[knowledgeSection].attachments ?? []).map((a: KnowledgeAttachment) => {
-                    const icons: Record<string, string> = { document: '📄', video: '🎬', audio: '🎵' }
-                    return (
-                      <a
-                        key={a.id}
-                        href={a.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        style={{
-                          display: 'flex', alignItems: 'center', gap: 10,
-                          padding: '10px 14px', borderRadius: 8,
-                          border: '1px solid var(--gray-200)', background: '#F8FAFC',
-                          textDecoration: 'none', color: 'var(--navy)',
-                        }}
-                      >
-                        <span style={{ fontSize: 20 }}>{icons[a.type] ?? '📎'}</span>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ fontWeight: 600, fontSize: 13 }}>{a.name}</div>
-                          <div style={{ fontSize: 11, color: 'var(--gray-400)', textTransform: 'capitalize' }}>{a.type}</div>
-                        </div>
-                        <span style={{ fontSize: 12, color: 'var(--blue)', fontWeight: 600 }}>Open ↗</span>
-                      </a>
-                    )
-                  })}
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 12, marginBottom: 8 }}>
+                  {(sections[knowledgeSection].attachments ?? []).map((a: KnowledgeAttachment) => (
+                    <AttachmentViewer
+                      key={a.id}
+                      attachment={a}
+                      completed={!!attachmentsDone[a.id]}
+                      onCompleted={() => setAttachmentsDone((prev) => ({ ...prev, [a.id]: true }))}
+                    />
+                  ))}
                 </div>
               )}
               {!sections[knowledgeSection].content && (sections[knowledgeSection].attachments ?? []).length === 0 && (
                 <p style={{ fontSize: 13, color: 'var(--gray-400)', fontStyle: 'italic' }}>No content in this section.</p>
               )}
+              {(() => {
+                const sec = sections[knowledgeSection]
+                const mediaAttachments = (sec.attachments ?? []).filter((a: KnowledgeAttachment) => a.type === 'video' || a.type === 'audio')
+                const allMediaDone = mediaAttachments.every((a: KnowledgeAttachment) => !!attachmentsDone[a.id])
+                const canCheck = allMediaDone
+                return (
               <div style={{ marginTop: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: 'pointer' }}>
-                  <input type="checkbox"
-                    checked={!!knowledgeRead[sections[knowledgeSection].id]}
-                    onChange={(e) => setKnowledgeRead((prev) => ({ ...prev, [sections[knowledgeSection].id]: e.target.checked }))}
-                  />
-                  I have read this section
-                </label>
+                <div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, cursor: canCheck ? 'pointer' : 'not-allowed', opacity: canCheck ? 1 : 0.5 }}>
+                    <input type="checkbox"
+                      checked={!!knowledgeRead[sec.id]}
+                      disabled={!canCheck}
+                      onChange={(e) => canCheck && setKnowledgeRead((prev) => ({ ...prev, [sec.id]: e.target.checked }))}
+                    />
+                    I have read this section
+                  </label>
+                  {!canCheck && (
+                    <div style={{ fontSize: 11, color: 'var(--amber,#d97706)', marginTop: 4 }}>
+                      ⚠ Watch/listen to all media above to unlock
+                    </div>
+                  )}
+                </div>
                 <div style={{ display: 'flex', gap: 8 }}>
                   {knowledgeSection > 0 && (
                     <button className="btn btn-secondary btn-sm" onClick={() => setKnowledgeSection((i) => i - 1)}>← Prev</button>
@@ -299,6 +424,8 @@ export function TakeAssessmentClient({ assessmentId, template, initialDraft }: P
                   )}
                 </div>
               </div>
+                )
+              })()}
             </div>
           )}
         </div>
