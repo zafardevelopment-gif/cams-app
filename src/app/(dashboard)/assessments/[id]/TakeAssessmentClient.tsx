@@ -41,6 +41,9 @@ function AttachmentViewer({
   const videoRef = useRef<HTMLVideoElement>(null)
   const audioRef = useRef<HTMLAudioElement>(null)
   const [progress, setProgress] = useState(0)
+  const [docLoaded, setDocLoaded] = useState(false)
+  const [countdown, setCountdown] = useState<number | null>(null)
+  const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   // Prevent seeking ahead on video/audio
   const lastValidTime = useRef(0)
@@ -49,7 +52,6 @@ function AttachmentViewer({
     const pct = el.duration ? Math.round((el.currentTime / el.duration) * 100) : 0
     setProgress(pct)
     if (el.currentTime > lastValidTime.current + 1) {
-      // User tried to skip — snap back
       el.currentTime = lastValidTime.current
     } else {
       lastValidTime.current = el.currentTime
@@ -61,17 +63,59 @@ function AttachmentViewer({
     onCompleted()
   }, [onCompleted])
 
+  const startDocTimer = useCallback(() => {
+    if (completed || countdownRef.current) return
+    const total = attachment.read_time_seconds ?? 60
+    setCountdown(total)
+    setDocLoaded(true)
+    countdownRef.current = setInterval(() => {
+      setCountdown((prev) => {
+        if (prev === null || prev <= 1) {
+          clearInterval(countdownRef.current!)
+          countdownRef.current = null
+          onCompleted()
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+  }, [completed, attachment.read_time_seconds, onCompleted])
+
+  useEffect(() => {
+    return () => { if (countdownRef.current) clearInterval(countdownRef.current) }
+  }, [])
+
   if (attachment.type === 'document') {
+    const total = attachment.read_time_seconds ?? 60
+    const elapsed = total - (countdown ?? total)
+    const pct = completed ? 100 : total > 0 ? Math.round((elapsed / total) * 100) : 0
+
     return (
       <div style={{ marginBottom: 12 }}>
         <iframe
           src={attachment.url}
           style={{ width: '100%', height: 520, border: '1px solid var(--gray-200)', borderRadius: 8 }}
           title={attachment.name}
-          onLoad={onCompleted}
+          onLoad={startDocTimer}
         />
-        <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4, textAlign: 'center' }}>
-          📄 {attachment.name}
+        <div style={{ marginTop: 6 }}>
+          {!docLoaded && !completed && (
+            <div style={{ fontSize: 11, color: 'var(--gray-400)', textAlign: 'center' }}>📄 {attachment.name} — loading…</div>
+          )}
+          {(docLoaded || completed) && (
+            <>
+              <div style={{ height: 4, background: 'var(--gray-200)', borderRadius: 2, overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${pct}%`, background: completed ? 'var(--green,#16a34a)' : 'var(--blue)', transition: 'width 1s linear' }} />
+              </div>
+              <div style={{ fontSize: 11, marginTop: 3, textAlign: 'center', color: completed ? 'var(--green,#16a34a)' : 'var(--gray-500)', fontWeight: completed ? 600 : 400 }}>
+                {completed
+                  ? '✓ Document read'
+                  : countdown !== null && countdown > 0
+                    ? `⏱ Read time remaining: ${countdown}s`
+                    : '📄 ' + attachment.name}
+              </div>
+            </>
+          )}
         </div>
       </div>
     )

@@ -241,6 +241,7 @@ export interface KnowledgeAttachment {
   url: string
   type: 'document' | 'video' | 'audio'
   size: number
+  read_time_seconds?: number
 }
 
 export interface KnowledgeSection {

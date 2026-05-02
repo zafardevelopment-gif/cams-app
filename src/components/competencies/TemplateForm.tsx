@@ -282,13 +282,32 @@ function KnowledgeSectionEditor({ s, onChange, onRemove }: {
       {(s.attachments ?? []).length > 0 && (
         <div style={{ marginBottom: 8 }}>
           {(s.attachments ?? []).map((a) => (
-            <div key={a.id} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px', background: 'white', borderRadius: 6, border: '1px solid var(--gray-200)', marginBottom: 4 }}>
-              <span style={{ fontSize: 16 }}>{ATTACHMENT_ICONS[a.type]}</span>
-              <a href={a.url} target="_blank" rel="noopener noreferrer" style={{ flex: 1, fontSize: 13, color: 'var(--blue)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {a.name}
-              </a>
-              <span className="text-muted" style={{ fontSize: 11, flexShrink: 0 }}>{formatSize(a.size)}</span>
-              <button type="button" onClick={() => removeAttachment(a.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-400)', fontSize: 14, padding: 0, lineHeight: 1 }}>✕</button>
+            <div key={a.id} style={{ background: 'white', borderRadius: 6, border: '1px solid var(--gray-200)', marginBottom: 4, overflow: 'hidden' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px' }}>
+                <span style={{ fontSize: 16 }}>{ATTACHMENT_ICONS[a.type]}</span>
+                <a href={a.url} target="_blank" rel="noopener noreferrer" style={{ flex: 1, fontSize: 13, color: 'var(--blue)', textDecoration: 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {a.name}
+                </a>
+                <span className="text-muted" style={{ fontSize: 11, flexShrink: 0 }}>{formatSize(a.size)}</span>
+                <button type="button" onClick={() => removeAttachment(a.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-400)', fontSize: 14, padding: 0, lineHeight: 1 }}>✕</button>
+              </div>
+              {a.type === 'document' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px 8px', borderTop: '1px solid var(--gray-100)', background: 'var(--gray-50)' }}>
+                  <span style={{ fontSize: 11, color: 'var(--gray-500)' }}>⏱ Min. read time:</span>
+                  <input
+                    type="number"
+                    min={10}
+                    max={3600}
+                    value={a.read_time_seconds ?? 60}
+                    onChange={(e) => {
+                      const secs = Math.max(10, parseInt(e.target.value) || 60)
+                      onChange({ ...s, attachments: (s.attachments ?? []).map((x) => x.id === a.id ? { ...x, read_time_seconds: secs } : x) })
+                    }}
+                    style={{ width: 70, fontSize: 12, padding: '2px 6px', border: '1px solid var(--gray-300)', borderRadius: 4 }}
+                  />
+                  <span style={{ fontSize: 11, color: 'var(--gray-500)' }}>seconds</span>
+                </div>
+              )}
             </div>
           ))}
         </div>
