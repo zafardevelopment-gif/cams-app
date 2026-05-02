@@ -31,6 +31,7 @@ interface Props {
   templates: TemplateRow[]
   departments: { id: string; name: string }[]
   canEdit: boolean
+  canPreview?: boolean
 }
 
 function resolveJoin<T>(raw: T | T[] | null | undefined): T | null {
@@ -38,7 +39,7 @@ function resolveJoin<T>(raw: T | T[] | null | undefined): T | null {
   return Array.isArray(raw) ? (raw[0] ?? null) : raw
 }
 
-export function CompetenciesClient({ templates, departments, canEdit }: Props) {
+export function CompetenciesClient({ templates, departments, canEdit, canPreview = false }: Props) {
   const [isPending, startTransition] = useTransition()
   const [search, setSearch] = useState('')
   const [filterCategory, setFilterCategory] = useState('')
@@ -246,7 +247,9 @@ export function CompetenciesClient({ templates, departments, canEdit }: Props) {
                         Start Assessment
                       </Link>
                     )}
-                    <Link href={`/competencies/${t.id}/preview`} className="btn btn-secondary btn-sm">Preview</Link>
+                    {canPreview && (
+                      <Link href={`/competencies/${t.id}/preview`} className="btn btn-secondary btn-sm">Preview</Link>
+                    )}
                     {canEdit && (
                       <>
                         <Link href={`/competencies/${t.id}/edit`} className="btn btn-secondary btn-sm">Edit</Link>

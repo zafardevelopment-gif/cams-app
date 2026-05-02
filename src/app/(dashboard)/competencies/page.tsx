@@ -47,7 +47,8 @@ export default async function CompetenciesPage() {
     isHospitalAdmin ? getHospitalConfig(hospitalId) : Promise.resolve(null),
   ])
 
-  const canEdit = ['hospital_admin', 'super_admin', 'educator', 'hr_quality'].includes(profile?.role ?? '')
+  const canEdit    = ['hospital_admin', 'super_admin', 'educator', 'hr_quality'].includes(profile?.role ?? '')
+  const canPreview = ['hospital_admin', 'super_admin', 'educator', 'hr_quality', 'assessor', 'head_nurse', 'unit_head', 'department_head', 'branch_admin', 'auditor'].includes(profile?.role ?? '')
 
   const branchCount = (branches as unknown as { count?: number } | null)?.count ?? 0
   if (isHospitalAdmin && (hospitalConfig?.hasBranches ?? true) && branchCount === 0) {
@@ -59,6 +60,7 @@ export default async function CompetenciesPage() {
       templates={templates ?? []}
       departments={departments ?? []}
       canEdit={canEdit}
+      canPreview={canPreview}
     />
   )
 }
