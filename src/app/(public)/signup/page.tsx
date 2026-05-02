@@ -3,6 +3,7 @@ import { T } from '@/lib/db'
 import SignupClient from './SignupClient'
 import type { Plan } from '@/types'
 
+export const dynamic = 'force-dynamic'
 export const metadata = { title: 'Get Started — CAMS' }
 
 const DEFAULT_PLANS: Plan[] = [
