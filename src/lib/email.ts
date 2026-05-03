@@ -1,64 +1,104 @@
-// Email helper — uses Resend when RESEND_API_KEY is set.
-// API key and FROM address are resolved from CAMS_settings DB table first,
-// then fall back to environment variables.
-// Falls back to console.log in dev / when key is absent.
+// Email service — uses Nodemailer with SMTP.
+// SMTP config is resolved from CAMS_settings DB table first,
+// then falls back to environment variables.
+// Falls back to console.log in dev / when host is absent.
 
-interface EmailPayload {
+import nodemailer from 'nodemailer'
+import type { Transporter } from 'nodemailer'
+
+export interface EmailPayload {
   to: string
   subject: string
   html: string
+  text?: string
 }
 
-async function resolveEmailConfig(): Promise<{ apiKey: string | null; from: string }> {
+export interface SmtpConfig {
+  host: string
+  port: number
+  secure: boolean        // true = SSL on connect (port 465), false = STARTTLS (port 587)
+  user: string
+  password: string
+  from_email: string
+  from_name: string
+}
+
+// ─── Config resolution ────────────────────────────────────────────────────────
+
+async function resolveSmtpConfig(): Promise<SmtpConfig | null> {
+  // DB keys we store per SMTP field
+  const DB_KEYS = ['smtp_host', 'smtp_port', 'smtp_secure', 'smtp_user', 'smtp_password', 'smtp_from_email', 'smtp_from_name']
+
+  let dbValues: Record<string, string> = {}
+
   try {
-    // Dynamic import to avoid circular deps — email.ts is imported by actions
     const { createAdminClient } = await import('@/lib/supabase/admin')
     const admin = createAdminClient()
     const { data: rows } = await admin
       .from('CAMS_settings')
       .select('key, value')
-      .in('key', ['resend_api_key', 'email_from'])
+      .in('key', DB_KEYS)
       .is('hospital_id', null)
 
-    const dbKey = rows?.find((r) => r.key === 'resend_api_key')?.value as string | undefined
-    const dbFrom = rows?.find((r) => r.key === 'email_from')?.value as string | undefined
-
-    return {
-      apiKey: (dbKey || process.env.RESEND_API_KEY) ?? null,
-      from: dbFrom || process.env.EMAIL_FROM || 'CAMS <noreply@cams.sa>',
+    for (const row of rows ?? []) {
+      if (row.key && row.value != null) dbValues[row.key] = row.value
     }
   } catch {
-    return {
-      apiKey: process.env.RESEND_API_KEY ?? null,
-      from: process.env.EMAIL_FROM ?? 'CAMS <noreply@cams.sa>',
-    }
+    // DB unavailable — fall through to env vars
+  }
+
+  const host = dbValues.smtp_host || process.env.SMTP_HOST || ''
+  if (!host) return null
+
+  const port = parseInt(dbValues.smtp_port || process.env.SMTP_PORT || '587', 10)
+  const secureRaw = dbValues.smtp_secure ?? process.env.SMTP_SECURE ?? ''
+  const secure = secureRaw === 'true' || secureRaw === 'ssl' || port === 465
+
+  return {
+    host,
+    port,
+    secure,
+    user: dbValues.smtp_user || process.env.SMTP_USER || '',
+    password: dbValues.smtp_password || process.env.SMTP_PASSWORD || '',
+    from_email: dbValues.smtp_from_email || process.env.SMTP_FROM_EMAIL || `noreply@${host}`,
+    from_name: dbValues.smtp_from_name || process.env.SMTP_FROM_NAME || 'CAMS',
   }
 }
 
-export async function sendEmail(payload: EmailPayload): Promise<void> {
-  const { apiKey, from } = await resolveEmailConfig()
+function buildTransporter(cfg: SmtpConfig): Transporter {
+  return nodemailer.createTransport({
+    host: cfg.host,
+    port: cfg.port,
+    secure: cfg.secure,
+    auth: { user: cfg.user, pass: cfg.password },
+    tls: { rejectUnauthorized: false },
+  })
+}
 
-  if (!apiKey) {
-    // Dev / no-op — log instead of fail
-    console.log('[email] (no RESEND_API_KEY — not sent)', payload.to, payload.subject)
+// ─── Public send function ─────────────────────────────────────────────────────
+
+export async function sendEmail(payload: EmailPayload): Promise<void> {
+  const cfg = await resolveSmtpConfig()
+
+  if (!cfg) {
+    console.log('[email] No SMTP config — skipping:', payload.to, payload.subject)
     return
   }
 
+  const transporter = buildTransporter(cfg)
+  const from = `${cfg.from_name} <${cfg.from_email}>`
+
   try {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ from, to: payload.to, subject: payload.subject, html: payload.html }),
+    await transporter.sendMail({
+      from,
+      to: payload.to,
+      subject: payload.subject,
+      html: payload.html,
+      text: payload.text,
     })
-    if (!res.ok) {
-      const text = await res.text()
-      console.error('[email] Resend error:', res.status, text)
-    }
   } catch (err) {
-    console.error('[email] Failed to send:', err)
+    console.error('[email] SMTP send failed:', err)
+    throw err
   }
 }
 

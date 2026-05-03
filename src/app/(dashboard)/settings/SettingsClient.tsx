@@ -25,7 +25,7 @@ interface Props {
   canEditWorkflow: boolean
   notifPrefs: Record<string, boolean>
   hospitalConfig: HospitalConfig | null
-  emailConfig: { resend_api_key: string; email_from: string } | null
+  emailConfig: Record<'smtp_host' | 'smtp_port' | 'smtp_secure' | 'smtp_user' | 'smtp_password' | 'smtp_from_email' | 'smtp_from_name', string> | null
   adminEmail: string
 }
 
@@ -102,8 +102,13 @@ export default function SettingsClient({
   const [isSavingCfg, startSaveCfg] = useTransition()
 
   // Email config state
-  const [emailCfg, setEmailCfg] = useState(initialEmailConfig ?? { resend_api_key: '', email_from: '' })
-  const [showApiKey, setShowApiKey] = useState(false)
+  type SmtpKey = 'smtp_host' | 'smtp_port' | 'smtp_secure' | 'smtp_user' | 'smtp_password' | 'smtp_from_email' | 'smtp_from_name'
+  const SMTP_DEFAULTS: Record<SmtpKey, string> = {
+    smtp_host: '', smtp_port: '587', smtp_secure: 'tls',
+    smtp_user: '', smtp_password: '', smtp_from_email: '', smtp_from_name: 'CAMS',
+  }
+  const [emailCfg, setEmailCfg] = useState<Record<SmtpKey, string>>({ ...SMTP_DEFAULTS, ...(initialEmailConfig ?? {}) })
+  const [showSmtpPassword, setShowSmtpPassword] = useState(false)
   const [testEmail, setTestEmail] = useState(adminEmail)
   const [isSavingEmail, startSaveEmail] = useTransition()
   const [isSendingTest, startSendTest] = useTransition()
@@ -201,11 +206,10 @@ export default function SettingsClient({
   function handleSaveEmail(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const fd = new FormData()
-    fd.set('resend_api_key', emailCfg.resend_api_key)
-    fd.set('email_from', emailCfg.email_from)
+    for (const [k, v] of Object.entries(emailCfg)) fd.set(k, v)
     startSaveEmail(async () => {
       const r = await saveEmailConfig(fd)
-      if (r.success) toast.success('Email configuration saved')
+      if (r.success) toast.success('SMTP configuration saved')
       else toast.error(r.error ?? 'Failed to save')
     })
   }
@@ -625,69 +629,154 @@ export default function SettingsClient({
           {/* EMAIL CONFIG TAB (super_admin only) */}
           {activeTab === 'email' && isSuperAdmin && (
             <>
-              <form onSubmit={handleSaveEmail}>
-                <div className="card" style={{ marginBottom: 18 }}>
+              <form onSubmit={handleSaveEmail} style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+                {/* SMTP Server */}
+                <div className="card">
                   <div className="card-header">
-                    <div>
-                      <div className="card-title">📧 Email Provider (Resend)</div>
-                      <div className="card-subtitle">Configure the API key and sender address used for all system emails</div>
+                    <div className="card-title">📡 SMTP Server</div>
+                    <div className="card-subtitle">Connection details for your outgoing mail server</div>
+                  </div>
+                  <div className="card-body">
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 130px', gap: 12, marginBottom: 14 }}>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label">SMTP Host</label>
+                        <input
+                          type="text" className="form-control"
+                          value={emailCfg.smtp_host}
+                          onChange={(e) => setEmailCfg((c) => ({ ...c, smtp_host: e.target.value }))}
+                          placeholder="smtp.gmail.com"
+                        />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label">Port</label>
+                        <input
+                          type="number" className="form-control"
+                          value={emailCfg.smtp_port}
+                          onChange={(e) => setEmailCfg((c) => ({ ...c, smtp_port: e.target.value }))}
+                          placeholder="587" min={1} max={65535}
+                        />
+                      </div>
                     </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">Encryption</label>
+                      <div style={{ display: 'flex', gap: 8, marginTop: 6, flexWrap: 'wrap' }}>
+                        {([
+                          { value: 'tls', label: 'STARTTLS', port: '587', badge: 'Recommended' },
+                          { value: 'ssl', label: 'SSL/TLS', port: '465', badge: 'Legacy' },
+                          { value: 'none', label: 'None', port: '25', badge: 'Insecure' },
+                        ] as const).map((opt) => (
+                          <label
+                            key={opt.value}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 8,
+                              padding: '8px 12px', borderRadius: 8, cursor: 'pointer', flex: 1,
+                              border: `1px solid ${emailCfg.smtp_secure === opt.value ? 'var(--blue)' : 'var(--gray-200)'}`,
+                              background: emailCfg.smtp_secure === opt.value ? '#EBF3FF' : 'var(--gray-50)',
+                            }}
+                          >
+                            <input
+                              type="radio" name="smtp_secure" value={opt.value}
+                              checked={emailCfg.smtp_secure === opt.value}
+                              onChange={() => setEmailCfg((c) => ({ ...c, smtp_secure: opt.value, smtp_port: opt.port }))}
+                              style={{ accentColor: 'var(--blue)' }}
+                            />
+                            <div>
+                              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--navy)' }}>{opt.label} (:{opt.port})</div>
+                              <div style={{ fontSize: 11, color: 'var(--gray-500)' }}>{opt.badge}</div>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Authentication */}
+                <div className="card">
+                  <div className="card-header">
+                    <div className="card-title">🔑 Authentication</div>
+                    <div className="card-subtitle">SMTP login credentials</div>
                   </div>
                   <div className="card-body">
                     <div className="form-group">
-                      <label className="form-label">Resend API Key</label>
+                      <label className="form-label">Username / Email</label>
+                      <input
+                        type="text" className="form-control" autoComplete="username"
+                        value={emailCfg.smtp_user}
+                        onChange={(e) => setEmailCfg((c) => ({ ...c, smtp_user: e.target.value }))}
+                        placeholder="you@gmail.com"
+                      />
+                    </div>
+                    <div className="form-group" style={{ marginBottom: 0 }}>
+                      <label className="form-label">Password / App Password</label>
                       <div style={{ display: 'flex', gap: 8 }}>
                         <input
-                          type={showApiKey ? 'text' : 'password'}
-                          className="form-control"
-                          value={emailCfg.resend_api_key}
-                          onChange={(e) => setEmailCfg((c) => ({ ...c, resend_api_key: e.target.value }))}
-                          placeholder="re_xxxxxxxxxxxxxxxxxxxx"
+                          type={showSmtpPassword ? 'text' : 'password'}
+                          className="form-control" autoComplete="current-password"
+                          value={emailCfg.smtp_password}
+                          onChange={(e) => setEmailCfg((c) => ({ ...c, smtp_password: e.target.value }))}
+                          placeholder="••••••••••••••••"
                           style={{ flex: 1, fontFamily: 'monospace' }}
                         />
-                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowApiKey((s) => !s)} style={{ minWidth: 70 }}>
-                          {showApiKey ? 'Hide' : 'Show'}
+                        <button type="button" className="btn btn-secondary btn-sm" onClick={() => setShowSmtpPassword((s) => !s)} style={{ minWidth: 70 }}>
+                          {showSmtpPassword ? 'Hide' : 'Show'}
                         </button>
                       </div>
                       <p style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>
-                        Get your API key from resend.com/api-keys. Falls back to <code>RESEND_API_KEY</code> env var if blank.
+                        For Gmail, use an <strong>App Password</strong> (requires 2FA enabled). Falls back to <code>SMTP_PASSWORD</code> env var.
                       </p>
                     </div>
-                    <div className="form-group">
-                      <label className="form-label">From Address</label>
-                      <input
-                        type="text" className="form-control"
-                        value={emailCfg.email_from}
-                        onChange={(e) => setEmailCfg((c) => ({ ...c, email_from: e.target.value }))}
-                        placeholder="CAMS <noreply@yourdomain.com>"
-                      />
-                      <p style={{ fontSize: 12, color: 'var(--gray-500)', marginTop: 4 }}>
-                        Must be a verified domain in Resend. Falls back to <code>EMAIL_FROM</code> env var.
-                      </p>
+                  </div>
+                </div>
+
+                {/* Sender identity */}
+                <div className="card">
+                  <div className="card-header">
+                    <div className="card-title">✉️ Sender Identity</div>
+                    <div className="card-subtitle">How recipients will see the &quot;From&quot; field</div>
+                  </div>
+                  <div className="card-body">
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label">From Name</label>
+                        <input
+                          type="text" className="form-control"
+                          value={emailCfg.smtp_from_name}
+                          onChange={(e) => setEmailCfg((c) => ({ ...c, smtp_from_name: e.target.value }))}
+                          placeholder="CAMS"
+                        />
+                      </div>
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label">From Email</label>
+                        <input
+                          type="email" className="form-control"
+                          value={emailCfg.smtp_from_email}
+                          onChange={(e) => setEmailCfg((c) => ({ ...c, smtp_from_email: e.target.value }))}
+                          placeholder="noreply@yourdomain.com"
+                        />
+                      </div>
                     </div>
                   </div>
                   <div className="card-footer">
                     <button type="submit" className="btn btn-primary" disabled={isSavingEmail}>
-                      {isSavingEmail ? 'Saving…' : 'Save Configuration'}
+                      {isSavingEmail ? 'Saving…' : 'Save SMTP Configuration'}
                     </button>
                   </div>
                 </div>
               </form>
 
+              {/* Test email */}
               <div className="card">
                 <div className="card-header">
-                  <div>
-                    <div className="card-title">Send Test Email</div>
-                    <div className="card-subtitle">Verify the current configuration by sending a test message</div>
-                  </div>
+                  <div className="card-title">Send Test Email</div>
+                  <div className="card-subtitle">Verify the current SMTP settings by sending a test message</div>
                 </div>
                 <div className="card-body">
                   <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
                     <div style={{ flex: '1 1 280px' }}>
                       <label className="form-label">Recipient Email</label>
                       <input
-                        type="email"
-                        className="form-control"
+                        type="email" className="form-control"
                         value={testEmail}
                         onChange={(e) => setTestEmail(e.target.value)}
                         placeholder="test@example.com"
@@ -696,8 +785,7 @@ export default function SettingsClient({
                     </div>
                     <div style={{ paddingTop: 22 }}>
                       <button
-                        type="button"
-                        className="btn btn-secondary"
+                        type="button" className="btn btn-secondary"
                         onClick={handleTestEmail}
                         disabled={isSendingTest || !testEmail}
                       >

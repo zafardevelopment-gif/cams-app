@@ -19,6 +19,8 @@ export default async function SettingsPage() {
 
   const admin = createAdminClient()
 
+  const SMTP_KEYS = ['smtp_host', 'smtp_port', 'smtp_secure', 'smtp_user', 'smtp_password', 'smtp_from_email', 'smtp_from_name'] as const
+
   const [{ data: profile }, { data: notifPrefs }, { data: emailCfgRows }] = await Promise.all([
     admin
       .from(T.users)
@@ -26,7 +28,7 @@ export default async function SettingsPage() {
       .eq('id', authUser!.id)
       .single(),
     admin.from('CAMS_notification_prefs').select('*').eq('user_id', authUser!.id).single(),
-    admin.from(T.settings).select('key, value').in('key', ['resend_api_key', 'email_from']).is('hospital_id', null),
+    admin.from(T.settings).select('key, value').in('key', [...SMTP_KEYS]).is('hospital_id', null),
   ])
 
   const role = profile?.role ?? 'staff'
@@ -44,10 +46,11 @@ export default async function SettingsPage() {
     ? await getHospitalConfig(profile.hospital_id)
     : null
 
-  const emailConfig = isSuperAdmin ? {
-    resend_api_key: (emailCfgRows?.find((r) => r.key === 'resend_api_key')?.value as string) ?? '',
-    email_from: (emailCfgRows?.find((r) => r.key === 'email_from')?.value as string) ?? '',
-  } : null
+  const emailConfig = isSuperAdmin
+    ? Object.fromEntries(
+        SMTP_KEYS.map((k) => [k, (emailCfgRows?.find((r) => r.key === k)?.value as string) ?? ''])
+      ) as Record<typeof SMTP_KEYS[number], string>
+    : null
 
   return (
     <SettingsClient

@@ -13,13 +13,18 @@ export default async function SuperAdminSettingsPage() {
   const { data: caller } = await admin.from(T.users).select('role, email').eq('id', authUser.id).single()
   if (!caller || caller.role !== 'super_admin') redirect('/login')
 
+  const SMTP_KEYS = ['smtp_host', 'smtp_port', 'smtp_secure', 'smtp_user', 'smtp_password', 'smtp_from_email', 'smtp_from_name'] as const
   const { data: rows } = await admin
     .from(T.settings)
     .select('key, value')
-    .in('key', ['resend_api_key', 'email_from'])
+    .in('key', [...SMTP_KEYS])
 
-  const resendKey = (rows?.find((r) => r.key === 'resend_api_key')?.value as string) ?? ''
-  const emailFrom = (rows?.find((r) => r.key === 'email_from')?.value as string) ?? ''
+  const smtpCfg = Object.fromEntries(SMTP_KEYS.map((k) => [k, ''])) as Record<typeof SMTP_KEYS[number], string>
+  for (const row of rows ?? []) {
+    if (SMTP_KEYS.includes(row.key as typeof SMTP_KEYS[number])) {
+      smtpCfg[row.key as typeof SMTP_KEYS[number]] = row.value ?? ''
+    }
+  }
 
   return (
     <div className="page-content">
@@ -31,12 +36,11 @@ export default async function SuperAdminSettingsPage() {
       </div>
 
       <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--gray-700)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 16 }}>
-        Email Configuration
+        SMTP Email Configuration
       </h3>
 
       <EmailConfigClient
-        initialResendKey={resendKey}
-        initialEmailFrom={emailFrom}
+        initialSmtp={smtpCfg}
         adminEmail={caller.email ?? authUser.email ?? ''}
       />
     </div>

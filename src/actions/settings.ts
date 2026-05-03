@@ -7,9 +7,12 @@ import { T } from '@/lib/db'
 import { UpdateProfileSchema, ChangePasswordSchema } from '@/lib/validations'
 import type { ActionResult } from '@/types'
 
-// ─── Super-admin email configuration ─────────────────────────────────────────
+// ─── Super-admin SMTP email configuration ────────────────────────────────────
 
-export async function getEmailConfig(): Promise<ActionResult<{ resend_api_key: string; email_from: string }>> {
+const SMTP_KEYS = ['smtp_host', 'smtp_port', 'smtp_secure', 'smtp_user', 'smtp_password', 'smtp_from_email', 'smtp_from_name'] as const
+type SmtpKey = typeof SMTP_KEYS[number]
+
+export async function getEmailConfig(): Promise<ActionResult<Record<SmtpKey, string>>> {
   const supabase = await createClient()
   const { data: { user: authUser } } = await supabase.auth.getUser()
   if (!authUser) return { success: false, error: 'Unauthorized' }
@@ -21,13 +24,12 @@ export async function getEmailConfig(): Promise<ActionResult<{ resend_api_key: s
   const { data } = await admin
     .from(T.settings)
     .select('key, value')
-    .in('key', ['resend_api_key', 'email_from'])
+    .in('key', [...SMTP_KEYS])
     .is('hospital_id', null)
 
-  const cfg = { resend_api_key: '', email_from: '' }
+  const cfg = Object.fromEntries(SMTP_KEYS.map((k) => [k, ''])) as Record<SmtpKey, string>
   for (const row of data ?? []) {
-    if (row.key === 'resend_api_key') cfg.resend_api_key = row.value ?? ''
-    if (row.key === 'email_from') cfg.email_from = row.value ?? ''
+    if (SMTP_KEYS.includes(row.key as SmtpKey)) cfg[row.key as SmtpKey] = row.value ?? ''
   }
   return { success: true, data: cfg }
 }
@@ -41,16 +43,12 @@ export async function saveEmailConfig(formData: FormData): Promise<ActionResult>
   const { data: caller } = await admin.from(T.users).select('role').eq('id', authUser.id).single()
   if (!caller || caller.role !== 'super_admin') return { success: false, error: 'Insufficient permissions' }
 
-  const resendKey = (formData.get('resend_api_key') as string | null)?.trim() ?? ''
-  const emailFrom = (formData.get('email_from') as string | null)?.trim() ?? ''
-
-  const keysToSet = [
-    { key: 'resend_api_key', value: resendKey },
-    { key: 'email_from', value: emailFrom },
-  ]
+  const keysToSet = SMTP_KEYS.map((key) => ({
+    key,
+    value: (formData.get(key) as string | null)?.trim() ?? '',
+  }))
 
   for (const row of keysToSet) {
-    // Check if global (null hospital_id) setting exists
     const { data: existing } = await admin
       .from(T.settings)
       .select('id')
@@ -69,11 +67,12 @@ export async function saveEmailConfig(formData: FormData): Promise<ActionResult>
     user_id: authUser.id,
     action: 'update_email_config',
     entity_type: 'settings',
-    description: 'Email configuration updated',
-    metadata: { email_from: emailFrom },
+    description: 'SMTP email configuration updated',
+    metadata: { smtp_host: (formData.get('smtp_host') as string) ?? '' },
   })
 
   revalidatePath('/super-admin/settings')
+  revalidatePath('/settings')
   return { success: true }
 }
 
@@ -86,36 +85,22 @@ export async function sendTestEmail(toEmail: string): Promise<ActionResult> {
   const { data: caller } = await admin.from(T.users).select('role').eq('id', authUser.id).single()
   if (!caller || caller.role !== 'super_admin') return { success: false, error: 'Insufficient permissions' }
 
-  // Read config from DB
-  const { data: rows } = await admin
-    .from(T.settings)
-    .select('key, value')
-    .in('key', ['resend_api_key', 'email_from'])
-    .is('hospital_id', null)
-
-  const dbKey = rows?.find((r) => r.key === 'resend_api_key')?.value ?? ''
-  const dbFrom = rows?.find((r) => r.key === 'email_from')?.value ?? ''
-
-  const apiKey = dbKey || process.env.RESEND_API_KEY
-  if (!apiKey) return { success: false, error: 'No RESEND_API_KEY configured' }
-
-  const from = dbFrom || process.env.EMAIL_FROM || 'CAMS <noreply@cams.sa>'
-
+  // Use the same sendEmail function which reads SMTP config internally
   try {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from,
-        to: toEmail,
-        subject: 'CAMS Email Configuration Test',
-        html: '<p>This is a test email from your CAMS email configuration. If you received this, email is working correctly.</p>',
-      }),
+    const { sendEmail } = await import('@/lib/email')
+    await sendEmail({
+      to: toEmail,
+      subject: 'CAMS SMTP Configuration Test',
+      html: `
+        <div style="font-family:sans-serif;max-width:480px;margin:32px auto;padding:24px;border:1px solid #e2e8f0;border-radius:10px">
+          <h2 style="color:#1565C0;margin-top:0">✅ SMTP Test Successful</h2>
+          <p>This is a test email from your CAMS SMTP configuration.</p>
+          <p>If you received this message, your SMTP settings are working correctly.</p>
+          <hr style="border:none;border-top:1px solid #e2e8f0;margin:20px 0"/>
+          <p style="font-size:12px;color:#94a3b8">Sent at: ${new Date().toUTCString()}</p>
+        </div>
+      `,
     })
-    if (!res.ok) {
-      const text = await res.text()
-      return { success: false, error: `Resend API error: ${text}` }
-    }
     return { success: true }
   } catch (err) {
     return { success: false, error: String(err) }
