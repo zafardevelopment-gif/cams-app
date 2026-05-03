@@ -20,20 +20,37 @@ export default async function CompetenciesPage() {
 
   const isHospitalAdmin = !isSuperAdmin && profile?.role === 'hospital_admin' && !!hospitalId
 
+  const templatesQuery = isSuperAdmin
+    ? admin
+        .from(T.competency_templates)
+        .select(`
+          id, title, category, subcategory, description,
+          passing_score, validity_months, approval_levels,
+          is_mandatory, requires_knowledge, requires_quiz, requires_practical,
+          is_draft, version, tags, cloned_from_id, hospital_id,
+          department:${J.departments}!department_id(id, name),
+          unit:${J.units}!unit_id(id, name)
+        `)
+        .eq('is_active', true)
+        .order('category')
+        .order('title')
+    : admin
+        .from(T.competency_templates)
+        .select(`
+          id, title, category, subcategory, description,
+          passing_score, validity_months, approval_levels,
+          is_mandatory, requires_knowledge, requires_quiz, requires_practical,
+          is_draft, version, tags, cloned_from_id, hospital_id,
+          department:${J.departments}!department_id(id, name),
+          unit:${J.units}!unit_id(id, name)
+        `)
+        .eq('is_active', true)
+        .or(`hospital_id.eq.${hospitalId},hospital_id.is.null`)
+        .order('category')
+        .order('title')
+
   const [{ data: templates }, { data: departments }, branchesRes, hospitalConfig] = await Promise.all([
-    admin
-      .from(T.competency_templates)
-      .select(`
-        id, title, category, subcategory, description,
-        passing_score, validity_months, approval_levels,
-        is_mandatory, requires_knowledge, requires_quiz, requires_practical,
-        is_draft, version, tags, cloned_from_id,
-        department:${J.departments}!department_id(id, name),
-        unit:${J.units}!unit_id(id, name)
-      `)
-      .eq('is_active', true)
-      .order('category')
-      .order('title'),
+    templatesQuery,
     admin
       .from(T.departments)
       .select('id, name')
@@ -61,6 +78,7 @@ export default async function CompetenciesPage() {
       departments={departments ?? []}
       canEdit={canEdit}
       canPreview={canPreview}
+      currentHospitalId={isSuperAdmin ? null : hospitalId}
     />
   )
 }

@@ -295,7 +295,8 @@ export async function cloneTemplate(
     .single()
 
   if (!src) return { success: false, error: 'Source template not found' }
-  if (ctx.profile.role !== 'super_admin' && src.hospital_id !== ctx.profile.hospital_id) {
+  // Allow cloning sample templates (hospital_id = null); block cloning other hospitals' templates
+  if (ctx.profile.role !== 'super_admin' && src.hospital_id !== null && src.hospital_id !== ctx.profile.hospital_id) {
     return { success: false, error: 'Cannot clone templates from a different hospital' }
   }
 

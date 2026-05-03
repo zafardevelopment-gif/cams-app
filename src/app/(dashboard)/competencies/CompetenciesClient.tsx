@@ -23,6 +23,7 @@ interface TemplateRow {
   version: number
   tags: string[]
   cloned_from_id?: string
+  hospital_id?: string | null
   department?: { id: string; name: string } | { id: string; name: string }[] | null
   unit?: { id: string; name: string } | { id: string; name: string }[] | null
 }
@@ -32,6 +33,7 @@ interface Props {
   departments: { id: string; name: string }[]
   canEdit: boolean
   canPreview?: boolean
+  currentHospitalId?: string | null
 }
 
 function resolveJoin<T>(raw: T | T[] | null | undefined): T | null {
@@ -39,7 +41,7 @@ function resolveJoin<T>(raw: T | T[] | null | undefined): T | null {
   return Array.isArray(raw) ? (raw[0] ?? null) : raw
 }
 
-export function CompetenciesClient({ templates, departments, canEdit, canPreview = false }: Props) {
+export function CompetenciesClient({ templates, departments, canEdit, canPreview = false, currentHospitalId }: Props) {
   const [isPending, startTransition] = useTransition()
   const [search, setSearch] = useState('')
   const [filterCategory, setFilterCategory] = useState('')
@@ -49,29 +51,40 @@ export function CompetenciesClient({ templates, departments, canEdit, canPreview
   const [cloneTarget, setCloneTarget] = useState<TemplateRow | null>(null)
   const [cloneTitle, setCloneTitle] = useState('')
 
-  const allCategories = [...new Set(templates.map((t) => t.category))].sort()
-  const allTags = [...new Set(templates.flatMap((t) => t.tags ?? []))].sort()
+  // Split into own hospital templates vs global sample templates (hospital_id = null)
+  const isSample = (t: TemplateRow) => t.hospital_id == null && currentHospitalId != null
+  const ownTemplates = templates.filter((t) => !isSample(t))
+  const sampleTemplates = templates.filter((t) => isSample(t))
 
-  const filtered = templates.filter((t) => {
-    if (!showDrafts && t.is_draft) return false
-    if (filterCategory && t.category !== filterCategory) return false
-    if (filterDept && resolveJoin(t.department)?.id !== filterDept) return false
-    if (filterTag && !(t.tags ?? []).includes(filterTag)) return false
-    if (search) {
-      const q = search.toLowerCase()
-      return (
-        t.title.toLowerCase().includes(q) ||
-        t.category.toLowerCase().includes(q) ||
-        (t.description ?? '').toLowerCase().includes(q) ||
-        (t.tags ?? []).some((tag) => tag.toLowerCase().includes(q))
-      )
-    }
-    return true
-  })
+  const allCategories = [...new Set(ownTemplates.map((t) => t.category))].sort()
+  const allTags = [...new Set(ownTemplates.flatMap((t) => t.tags ?? []))].sort()
+
+  function applyFilters(list: TemplateRow[]) {
+    return list.filter((t) => {
+      if (!showDrafts && t.is_draft) return false
+      if (filterCategory && t.category !== filterCategory) return false
+      if (filterDept && resolveJoin(t.department)?.id !== filterDept) return false
+      if (filterTag && !(t.tags ?? []).includes(filterTag)) return false
+      if (search) {
+        const q = search.toLowerCase()
+        return (
+          t.title.toLowerCase().includes(q) ||
+          t.category.toLowerCase().includes(q) ||
+          (t.description ?? '').toLowerCase().includes(q) ||
+          (t.tags ?? []).some((tag) => tag.toLowerCase().includes(q))
+        )
+      }
+      return true
+    })
+  }
+
+  const filtered = applyFilters(ownTemplates)
+  const filteredSamples = applyFilters(sampleTemplates)
 
   const categories = [...new Set(filtered.map((t) => t.category))].sort()
-  const draftCount = templates.filter((t) => t.is_draft).length
-  const publishedCount = templates.filter((t) => !t.is_draft).length
+  const sampleCategories = [...new Set(filteredSamples.map((t) => t.category))].sort()
+  const draftCount = ownTemplates.filter((t) => t.is_draft).length
+  const publishedCount = ownTemplates.filter((t) => !t.is_draft).length
 
   function handleClone() {
     if (!cloneTarget || !cloneTitle.trim()) return
@@ -111,6 +124,132 @@ export function CompetenciesClient({ templates, departments, canEdit, canPreview
         toast.error(r.error ?? 'Deactivate failed')
       }
     })
+  }
+
+  function renderCard(t: TemplateRow, isSampleCard: boolean) {
+    return (
+      <div key={t.id} className="card" style={{ padding: 18, position: 'relative', opacity: t.is_draft ? 0.9 : 1, background: isSampleCard ? 'var(--gray-50, #f9fafb)' : undefined }}>
+        {t.is_draft && (
+          <div style={{ position: 'absolute', top: 0, right: 0, background: 'var(--amber, #f59e0b)', color: 'white', fontSize: 10, fontWeight: 700, padding: '2px 10px', borderRadius: '0 8px 0 8px', letterSpacing: '0.06em' }}>
+            DRAFT
+          </div>
+        )}
+        {isSampleCard && (
+          <div style={{ position: 'absolute', top: 0, left: 0, background: 'var(--blue, #3b82f6)', color: 'white', fontSize: 10, fontWeight: 700, padding: '2px 10px', borderRadius: '8px 0 8px 0', letterSpacing: '0.06em' }}>
+            SAMPLE
+          </div>
+        )}
+
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8, marginTop: isSampleCard ? 8 : 0 }}>
+          <div style={{ flex: 1, paddingRight: 8 }}>
+            <h4 style={{ fontSize: 14, fontWeight: 600, color: 'var(--navy)', marginBottom: 4 }}>{t.title}</h4>
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 4 }}>
+              {t.subcategory && <span className="badge badge-gray">{t.subcategory}</span>}
+              <span className="badge badge-gray" style={{ fontSize: 10 }}>v{t.version}</span>
+              {!!t.cloned_from_id && <span className="badge badge-gray" style={{ fontSize: 10 }}>cloned</span>}
+            </div>
+          </div>
+          <span className={`badge ${t.is_mandatory ? 'badge-red' : 'badge-gray'}`}>
+            {t.is_mandatory ? 'Mandatory' : 'Optional'}
+          </span>
+        </div>
+
+        {t.description && (
+          <p style={{ fontSize: 12, color: 'var(--gray-500)', marginBottom: 10, lineHeight: 1.6 }}>
+            {t.description.slice(0, 100)}{t.description.length > 100 ? '…' : ''}
+          </p>
+        )}
+
+        {(() => {
+          const dept = resolveJoin(t.department)
+          const unit = resolveJoin(t.unit)
+          return (dept || unit) ? (
+            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
+              {dept && <span className="badge badge-teal" style={{ fontSize: 10 }}>🏥 {dept.name}</span>}
+              {unit && <span className="badge badge-purple" style={{ fontSize: 10 }}>🔬 {unit.name}</span>}
+            </div>
+          ) : null
+        })()}
+
+        {t.tags && t.tags.length > 0 && (
+          <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 10 }}>
+            {t.tags.slice(0, 4).map((tag) => (
+              <span key={tag} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 999, background: 'var(--gray-100)', color: 'var(--gray-600)', border: '1px solid var(--gray-200)', cursor: 'pointer' }}
+                onClick={() => setFilterTag(tag === filterTag ? '' : tag)}>
+                #{tag}
+              </span>
+            ))}
+            {t.tags.length > 4 && <span style={{ fontSize: 10, color: 'var(--gray-400)' }}>+{t.tags.length - 4}</span>}
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
+          {t.requires_knowledge && <span className="badge badge-blue">📖 Knowledge</span>}
+          {t.requires_quiz && <span className="badge badge-purple">📝 Quiz</span>}
+          {t.requires_practical && <span className="badge badge-teal">🤲 Practical</span>}
+        </div>
+
+        <div className="stat-row">
+          <span className="stat-label">Passing Score</span>
+          <span className="stat-value">{t.passing_score}%</span>
+        </div>
+        <div className="stat-row">
+          <span className="stat-label">Valid For</span>
+          <span className="stat-value">{t.validity_months}m</span>
+        </div>
+
+        <div style={{ display: 'flex', gap: 6, marginTop: 14, flexWrap: 'wrap' }}>
+          {!isSampleCard && !t.is_draft && (
+            <Link href={`/assessments/new?template=${t.id}`} className="btn btn-primary btn-sm" style={{ flex: 1, justifyContent: 'center' }}>
+              Start Assessment
+            </Link>
+          )}
+          {canPreview && (
+            <Link href={`/competencies/${t.id}/preview`} className="btn btn-secondary btn-sm">Preview</Link>
+          )}
+          {isSampleCard ? (
+            canEdit && (
+              <button
+                className="btn btn-primary btn-sm"
+                onClick={() => { setCloneTarget(t); setCloneTitle(`${t.title} (Copy)`) }}
+                disabled={isPending}
+              >
+                Clone to My Hospital
+              </button>
+            )
+          ) : (
+            canEdit && (
+              <>
+                <Link href={`/competencies/${t.id}/edit`} className="btn btn-secondary btn-sm">Edit</Link>
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => { setCloneTarget(t); setCloneTitle(`${t.title} (Copy)`) }}
+                  disabled={isPending}
+                >
+                  Clone
+                </button>
+                {t.is_draft && (
+                  <button
+                    className="btn btn-success btn-sm"
+                    onClick={() => handlePublish(t.id, t.title)}
+                    disabled={isPending}
+                  >
+                    Publish
+                  </button>
+                )}
+                <button
+                  className="btn btn-danger btn-sm"
+                  onClick={() => handleDeactivate(t.id, t.title)}
+                  disabled={isPending}
+                >
+                  Deactivate
+                </button>
+              </>
+            )
+          )}
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -164,6 +303,7 @@ export function CompetenciesClient({ templates, departments, canEdit, canPreview
         )}
       </div>
 
+      {/* Own hospital templates */}
       {categories.map((cat) => {
         const catTemplates = filtered.filter((t) => t.category === cat)
         return (
@@ -172,130 +312,48 @@ export function CompetenciesClient({ templates, departments, canEdit, canPreview
               {cat} <span style={{ fontWeight: 400, color: 'var(--gray-400)', textTransform: 'none' }}>({catTemplates.length})</span>
             </h3>
             <div className="grid-auto">
-              {catTemplates.map((t) => (
-                <div key={t.id} className="card" style={{ padding: 18, position: 'relative', opacity: t.is_draft ? 0.9 : 1 }}>
-                  {/* Draft ribbon */}
-                  {t.is_draft && (
-                    <div style={{ position: 'absolute', top: 0, right: 0, background: 'var(--amber, #f59e0b)', color: 'white', fontSize: 10, fontWeight: 700, padding: '2px 10px', borderRadius: '0 8px 0 8px', letterSpacing: '0.06em' }}>
-                      DRAFT
-                    </div>
-                  )}
-
-                  <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 8 }}>
-                    <div style={{ flex: 1, paddingRight: 8 }}>
-                      <h4 style={{ fontSize: 14, fontWeight: 600, color: 'var(--navy)', marginBottom: 4 }}>{t.title}</h4>
-                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 4 }}>
-                        {t.subcategory && <span className="badge badge-gray">{t.subcategory}</span>}
-                        <span className="badge badge-gray" style={{ fontSize: 10 }}>v{t.version}</span>
-                        {!!t.cloned_from_id && <span className="badge badge-gray" style={{ fontSize: 10 }}>cloned</span>}
-                      </div>
-                    </div>
-                    <span className={`badge ${t.is_mandatory ? 'badge-red' : 'badge-gray'}`}>
-                      {t.is_mandatory ? 'Mandatory' : 'Optional'}
-                    </span>
-                  </div>
-
-                  {t.description && (
-                    <p style={{ fontSize: 12, color: 'var(--gray-500)', marginBottom: 10, lineHeight: 1.6 }}>
-                      {t.description.slice(0, 100)}{t.description.length > 100 ? '…' : ''}
-                    </p>
-                  )}
-
-                  {/* Scope badges */}
-                  {(() => {
-                    const dept = resolveJoin(t.department)
-                    const unit = resolveJoin(t.unit)
-                    return (dept || unit) ? (
-                      <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 8 }}>
-                        {dept && <span className="badge badge-teal" style={{ fontSize: 10 }}>🏥 {dept.name}</span>}
-                        {unit && <span className="badge badge-purple" style={{ fontSize: 10 }}>🔬 {unit.name}</span>}
-                      </div>
-                    ) : null
-                  })()}
-
-                  {/* Tags */}
-                  {t.tags && t.tags.length > 0 && (
-                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 10 }}>
-                      {t.tags.slice(0, 4).map((tag) => (
-                        <span key={tag} style={{ fontSize: 10, padding: '2px 7px', borderRadius: 999, background: 'var(--gray-100)', color: 'var(--gray-600)', border: '1px solid var(--gray-200)', cursor: 'pointer' }}
-                          onClick={() => setFilterTag(tag === filterTag ? '' : tag)}>
-                          #{tag}
-                        </span>
-                      ))}
-                      {t.tags.length > 4 && <span style={{ fontSize: 10, color: 'var(--gray-400)' }}>+{t.tags.length - 4}</span>}
-                    </div>
-                  )}
-
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 }}>
-                    {t.requires_knowledge && <span className="badge badge-blue">📖 Knowledge</span>}
-                    {t.requires_quiz && <span className="badge badge-purple">📝 Quiz</span>}
-                    {t.requires_practical && <span className="badge badge-teal">🤲 Practical</span>}
-                  </div>
-
-                  <div className="stat-row">
-                    <span className="stat-label">Passing Score</span>
-                    <span className="stat-value">{t.passing_score}%</span>
-                  </div>
-                  <div className="stat-row">
-                    <span className="stat-label">Valid For</span>
-                    <span className="stat-value">{t.validity_months}m</span>
-                  </div>
-
-                  <div style={{ display: 'flex', gap: 6, marginTop: 14, flexWrap: 'wrap' }}>
-                    {!t.is_draft && (
-                      <Link href={`/assessments/new?template=${t.id}`} className="btn btn-primary btn-sm" style={{ flex: 1, justifyContent: 'center' }}>
-                        Start Assessment
-                      </Link>
-                    )}
-                    {canPreview && (
-                      <Link href={`/competencies/${t.id}/preview`} className="btn btn-secondary btn-sm">Preview</Link>
-                    )}
-                    {canEdit && (
-                      <>
-                        <Link href={`/competencies/${t.id}/edit`} className="btn btn-secondary btn-sm">Edit</Link>
-                        <button
-                          className="btn btn-secondary btn-sm"
-                          onClick={() => { setCloneTarget(t); setCloneTitle(`${t.title} (Copy)`) }}
-                          disabled={isPending}
-                        >
-                          Clone
-                        </button>
-                        {t.is_draft && (
-                          <button
-                            className="btn btn-success btn-sm"
-                            onClick={() => handlePublish(t.id, t.title)}
-                            disabled={isPending}
-                          >
-                            Publish
-                          </button>
-                        )}
-                        <button
-                          className="btn btn-danger btn-sm"
-                          onClick={() => handleDeactivate(t.id, t.title)}
-                          disabled={isPending}
-                        >
-                          Deactivate
-                        </button>
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))}
+              {catTemplates.map((t) => renderCard(t, false))}
             </div>
           </div>
         )
       })}
 
-      {filtered.length === 0 && templates.length === 0 && (
+      {filtered.length === 0 && ownTemplates.length === 0 && sampleTemplates.length === 0 && (
         <CompetencyZeroState canEdit={canEdit} />
       )}
-      {filtered.length === 0 && templates.length > 0 && (
+      {filtered.length === 0 && ownTemplates.length > 0 && (
         <div className="card" style={{ padding: 40, textAlign: 'center', color: 'var(--gray-400)' }}>
           No templates match your current filters.{' '}
           <button style={{ background: 'none', border: 'none', color: 'var(--blue)', cursor: 'pointer', textDecoration: 'underline' }}
             onClick={() => { setSearch(''); setFilterCategory(''); setFilterDept(''); setFilterTag('') }}>
             Clear filters
           </button>
+        </div>
+      )}
+
+      {/* Sample / global templates (hospital_id = null) */}
+      {filteredSamples.length > 0 && (
+        <div style={{ marginTop: 40 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+            <div style={{ flex: 1, height: 1, background: 'var(--gray-200)' }} />
+            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--gray-400)', textTransform: 'uppercase', letterSpacing: '0.08em', whiteSpace: 'nowrap' }}>
+              Sample Templates — Clone to use in your hospital
+            </span>
+            <div style={{ flex: 1, height: 1, background: 'var(--gray-200)' }} />
+          </div>
+          {sampleCategories.map((cat) => {
+            const catTemplates = filteredSamples.filter((t) => t.category === cat)
+            return (
+              <div key={cat} style={{ marginBottom: 28 }}>
+                <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--gray-500)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>
+                  {cat} <span style={{ fontWeight: 400, color: 'var(--gray-400)', textTransform: 'none' }}>({catTemplates.length})</span>
+                </h3>
+                <div className="grid-auto">
+                  {catTemplates.map((t) => renderCard(t, true))}
+                </div>
+              </div>
+            )
+          })}
         </div>
       )}
 
