@@ -242,6 +242,7 @@ export interface KnowledgeAttachment {
   type: 'document' | 'video' | 'audio'
   size: number
   read_time_seconds?: number
+  must_complete?: boolean
 }
 
 export interface KnowledgeSection {

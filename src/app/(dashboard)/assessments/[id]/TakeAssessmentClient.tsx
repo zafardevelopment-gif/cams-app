@@ -45,18 +45,20 @@ function AttachmentViewer({
   const [countdown, setCountdown] = useState<number | null>(null)
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // Prevent seeking ahead on video/audio
+  const enforce = attachment.must_complete !== false
+
+  // Prevent seeking ahead on video/audio (only when enforce=true)
   const lastValidTime = useRef(0)
 
   const handleTimeUpdate = useCallback((el: HTMLVideoElement | HTMLAudioElement) => {
     const pct = el.duration ? Math.round((el.currentTime / el.duration) * 100) : 0
     setProgress(pct)
-    if (el.currentTime > lastValidTime.current + 1) {
+    if (enforce && el.currentTime > lastValidTime.current + 1) {
       el.currentTime = lastValidTime.current
     } else {
       lastValidTime.current = el.currentTime
     }
-  }, [])
+  }, [enforce])
 
   const handleEnded = useCallback(() => {
     setProgress(100)
@@ -65,9 +67,13 @@ function AttachmentViewer({
 
   const startDocTimer = useCallback(() => {
     if (completed || countdownRef.current) return
+    setDocLoaded(true)
+    if (!enforce) {
+      onCompleted()
+      return
+    }
     const total = attachment.read_time_seconds ?? 60
     setCountdown(total)
-    setDocLoaded(true)
     countdownRef.current = setInterval(() => {
       setCountdown((prev) => {
         if (prev === null || prev <= 1) {
@@ -79,7 +85,7 @@ function AttachmentViewer({
         return prev - 1
       })
     }, 1000)
-  }, [completed, attachment.read_time_seconds, onCompleted])
+  }, [completed, enforce, attachment.read_time_seconds, onCompleted])
 
   useEffect(() => {
     return () => { if (countdownRef.current) clearInterval(countdownRef.current) }
@@ -133,19 +139,24 @@ function AttachmentViewer({
           onTimeUpdate={() => videoRef.current && handleTimeUpdate(videoRef.current)}
           onEnded={handleEnded}
           onSeeking={() => {
-            if (videoRef.current && !completed) {
+            if (enforce && videoRef.current && !completed) {
               videoRef.current.currentTime = lastValidTime.current
             }
           }}
         />
-        {!completed && (
+        {!completed && enforce && (
           <div style={{ marginTop: 6 }}>
             <div style={{ height: 4, background: 'var(--gray-200)', borderRadius: 2, overflow: 'hidden' }}>
               <div style={{ height: '100%', width: `${progress}%`, background: 'var(--blue)', transition: 'width 0.5s' }} />
             </div>
             <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 3 }}>
-              Watch the full video to continue — {progress}% complete
+              🔒 Watch the full video to continue — {progress}% complete (no skipping)
             </div>
+          </div>
+        )}
+        {!completed && !enforce && (
+          <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4 }}>
+            {progress}% watched
           </div>
         )}
         {completed && (
@@ -171,19 +182,24 @@ function AttachmentViewer({
           onTimeUpdate={() => audioRef.current && handleTimeUpdate(audioRef.current)}
           onEnded={handleEnded}
           onSeeking={() => {
-            if (audioRef.current && !completed) {
+            if (enforce && audioRef.current && !completed) {
               audioRef.current.currentTime = lastValidTime.current
             }
           }}
         />
-        {!completed && (
+        {!completed && enforce && (
           <div style={{ marginTop: 6 }}>
             <div style={{ height: 4, background: 'var(--gray-200)', borderRadius: 2, overflow: 'hidden' }}>
               <div style={{ height: '100%', width: `${progress}%`, background: 'var(--blue)', transition: 'width 0.5s' }} />
             </div>
             <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 3 }}>
-              Listen to the full audio to continue — {progress}% complete
+              🔒 Listen to the full audio to continue — {progress}% complete (no skipping)
             </div>
+          </div>
+        )}
+        {!completed && !enforce && (
+          <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 4 }}>
+            {progress}% listened
           </div>
         )}
         {completed && (
@@ -432,9 +448,10 @@ export function TakeAssessmentClient({ assessmentId, template, initialDraft }: P
               )}
               {(() => {
                 const sec = sections[knowledgeSection]
-                const mediaAttachments = (sec.attachments ?? []).filter((a: KnowledgeAttachment) => a.type === 'video' || a.type === 'audio')
-                const allMediaDone = mediaAttachments.every((a: KnowledgeAttachment) => !!attachmentsDone[a.id])
-                const canCheck = allMediaDone
+                // Only block on attachments where must_complete !== false
+                const blockers = (sec.attachments ?? []).filter((a: KnowledgeAttachment) => a.must_complete !== false)
+                const allBlockersDone = blockers.every((a: KnowledgeAttachment) => !!attachmentsDone[a.id])
+                const canCheck = allBlockersDone
                 return (
               <div style={{ marginTop: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <div>

@@ -291,21 +291,55 @@ function KnowledgeSectionEditor({ s, onChange, onRemove }: {
                 <span className="text-muted" style={{ fontSize: 11, flexShrink: 0 }}>{formatSize(a.size)}</span>
                 <button type="button" onClick={() => removeAttachment(a.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--gray-400)', fontSize: 14, padding: 0, lineHeight: 1 }}>✕</button>
               </div>
+
+              {/* Document: min read timer */}
               {a.type === 'document' && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '4px 10px 8px', borderTop: '1px solid var(--gray-100)', background: 'var(--gray-50)' }}>
-                  <span style={{ fontSize: 11, color: 'var(--gray-500)' }}>⏱ Min. read time:</span>
-                  <input
-                    type="number"
-                    min={10}
-                    max={3600}
-                    value={a.read_time_seconds ?? 60}
-                    onChange={(e) => {
-                      const secs = Math.max(10, parseInt(e.target.value) || 60)
-                      onChange({ ...s, attachments: (s.attachments ?? []).map((x) => x.id === a.id ? { ...x, read_time_seconds: secs } : x) })
-                    }}
-                    style={{ width: 70, fontSize: 12, padding: '2px 6px', border: '1px solid var(--gray-300)', borderRadius: 4 }}
-                  />
-                  <span style={{ fontSize: 11, color: 'var(--gray-500)' }}>seconds</span>
+                <div style={{ padding: '6px 10px 8px', borderTop: '1px solid var(--gray-100)', background: 'var(--gray-50)', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, fontWeight: 500 }}>
+                      <input
+                        type="checkbox"
+                        checked={a.must_complete !== false}
+                        onChange={(e) => onChange({ ...s, attachments: (s.attachments ?? []).map((x) => x.id === a.id ? { ...x, must_complete: e.target.checked } : x) })}
+                      />
+                      ⏱ Require minimum read time
+                    </label>
+                  </div>
+                  {a.must_complete !== false && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, paddingLeft: 20 }}>
+                      <input
+                        type="number"
+                        min={10}
+                        max={3600}
+                        value={a.read_time_seconds ?? 60}
+                        onChange={(e) => {
+                          const secs = Math.max(10, parseInt(e.target.value) || 60)
+                          onChange({ ...s, attachments: (s.attachments ?? []).map((x) => x.id === a.id ? { ...x, read_time_seconds: secs } : x) })
+                        }}
+                        style={{ width: 70, fontSize: 12, padding: '2px 6px', border: '1px solid var(--gray-300)', borderRadius: 4 }}
+                      />
+                      <span style={{ fontSize: 11, color: 'var(--gray-500)' }}>seconds — staff cannot proceed until timer ends</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Video / Audio: must watch/listen fully */}
+              {(a.type === 'video' || a.type === 'audio') && (
+                <div style={{ padding: '6px 10px 8px', borderTop: '1px solid var(--gray-100)', background: 'var(--gray-50)' }}>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer', fontSize: 12, fontWeight: 500 }}>
+                    <input
+                      type="checkbox"
+                      checked={a.must_complete !== false}
+                      onChange={(e) => onChange({ ...s, attachments: (s.attachments ?? []).map((x) => x.id === a.id ? { ...x, must_complete: e.target.checked } : x) })}
+                    />
+                    {a.type === 'video' ? '🎬 Must watch fully — no skipping allowed' : '🎵 Must listen fully — no skipping allowed'}
+                  </label>
+                  <div style={{ fontSize: 11, color: 'var(--gray-400)', marginTop: 3, paddingLeft: 20 }}>
+                    {a.must_complete !== false
+                      ? 'Staff cannot fast-forward or skip to next section until complete'
+                      : 'Staff can skip — watching is optional'}
+                  </div>
                 </div>
               )}
             </div>
