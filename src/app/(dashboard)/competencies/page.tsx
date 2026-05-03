@@ -20,7 +20,7 @@ export default async function CompetenciesPage() {
 
   const isHospitalAdmin = !isSuperAdmin && profile?.role === 'hospital_admin' && !!hospitalId
 
-  const [{ data: templates }, { data: departments }, { data: branches }, hospitalConfig] = await Promise.all([
+  const [{ data: templates }, { data: departments }, branchesRes, hospitalConfig] = await Promise.all([
     admin
       .from(T.competency_templates)
       .select(`
@@ -50,8 +50,8 @@ export default async function CompetenciesPage() {
   const canEdit    = ['hospital_admin', 'super_admin', 'educator', 'hr_quality'].includes(profile?.role ?? '')
   const canPreview = ['hospital_admin', 'super_admin', 'educator', 'hr_quality', 'assessor', 'head_nurse', 'unit_head', 'department_head', 'branch_admin', 'auditor'].includes(profile?.role ?? '')
 
-  const branchCount = (branches as unknown as { count?: number } | null)?.count ?? 0
-  if (isHospitalAdmin && (hospitalConfig?.hasBranches ?? true) && branchCount === 0) {
+  const branchCount = branchesRes.count ?? 0
+  if (isHospitalAdmin && hospitalConfig?.hasBranches === true && branchCount === 0) {
     redirect('/hospital/branches')
   }
 
